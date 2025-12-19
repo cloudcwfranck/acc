@@ -1,0 +1,37 @@
+{
+  "status": "fail",
+  "sbomPresent": true,
+  "policyResult": {
+    "allow": false,
+    "violations": [
+      {
+        "rule": "no-root-user",
+        "severity": "high",
+        "result": "fail",
+        "message": "Container must not run as root"
+      },
+      {
+        "rule": "require-healthcheck",
+        "severity": "medium",
+        "result": "fail",
+        "message": "Container must define healthcheck"
+      }
+    ],
+    "warnings": []
+  },
+  "attestations": [],
+  "violations": [
+    {
+      "rule": "no-root-user",
+      "severity": "high",
+      "result": "fail",
+      "message": "Container must not run as root"
+    },
+    {
+      "rule": "require-healthcheck",
+      "severity": "medium",
+      "result": "fail",
+      "message": "Container must define healthcheck"
+    }
+  ]
+}

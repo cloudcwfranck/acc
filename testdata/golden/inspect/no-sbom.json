@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v0.1",
+  "imageRef": "test:latest",
+  "digest": "abc123def456",
+  "status": "unknown",
+  "artifacts": {
+    "attestations": []
+  },
+  "policy": {
+    "mode": "enforce",
+    "policyPack": ".acc/policy",
+    "waivers": []
+  },
+  "metadata": {
+    "digestResolved": "true"
+  },
+  "timestamp": "2025-01-15T10:05:00Z"
+}

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "v0.1",
+  "imageRef": "test:latest",
+  "digest": "abc123def456",
+  "status": "warn",
+  "artifacts": {
+    "sbomPath": ".acc/sbom/test.spdx.json",
+    "sbomFormat": "spdx",
+    "attestations": []
+  },
+  "policy": {
+    "mode": "warn",
+    "policyPack": ".acc/policy",
+    "waivers": [
+      {
+        "ruleId": "no-root-user",
+        "justification": "Legacy container requires root for initialization",
+        "expiry": "2025-12-31T23:59:59Z",
+        "expired": false
+      },
+      {
+        "ruleId": "deprecated-base-image",
+        "justification": "Migration planned for Q2",
+        "expiry": "2025-06-30T23:59:59Z",
+        "expired": false
+      }
+    ]
+  },
+  "metadata": {
+    "digestResolved": "true",
+    "lastVerified": "2025-01-15T10:00:00Z"
+  },
+  "timestamp": "2025-01-15T10:05:00Z"
+}
