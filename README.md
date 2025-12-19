@@ -245,6 +245,7 @@ acc run myimage:latest --cap-add NET_ADMIN
 | `push` | Verify and push verified artifacts to registry |
 | `promote` | Re-verify and promote workload to environment |
 | `policy explain` | Explain last verification decision |
+| `upgrade` | Upgrade acc to the latest version with checksum verification |
 | `config` | Get or set configuration values (coming soon) |
 | `login` | Authenticate to registries (coming soon) |
 | `version` | Print version information |
@@ -259,6 +260,170 @@ acc run myimage:latest --cap-add NET_ADMIN
 --policy-pack path  Path to policy pack
 --config path       Path to config file
 ```
+
+## Upgrade
+
+`acc` includes built-in self-update functionality with cryptographic verification to ensure you're always running the latest stable release.
+
+### Upgrade to Latest Version
+
+```bash
+# Upgrade to the latest stable release
+acc upgrade
+```
+
+**What happens:**
+1. Fetches latest release information from GitHub
+2. Checks if you're already running the latest version
+3. Downloads the appropriate binary for your OS/ARCH
+4. Verifies SHA256 checksum against official checksums.txt
+5. Atomically replaces the current binary (with backup on Unix)
+6. Displays upgrade summary with version and checksum
+
+**Output:**
+```
+Current version: v0.1.5
+Target version:  v0.1.6
+Asset:           acc_0.1.6_linux_amd64.tar.gz
+Checksum:        a1b2c3d4e5f6...
+Installed to:    /usr/local/bin/acc
+
+Successfully upgraded from v0.1.5 to v0.1.6
+```
+
+### Upgrade to Specific Version
+
+```bash
+# Install a specific version
+acc upgrade --version v0.1.5
+
+# Or without the 'v' prefix
+acc upgrade --version 0.1.5
+```
+
+Use this to:
+- Pin to a known-good version in CI/CD
+- Downgrade to a previous version if needed
+- Test pre-release versions
+
+### Dry Run
+
+Preview what would happen without actually downloading or installing:
+
+```bash
+acc upgrade --dry-run
+
+# Example output:
+# Would upgrade from v0.1.5 to v0.1.6 using acc_0.1.6_linux_amd64.tar.gz
+```
+
+### JSON Output
+
+For automation and CI/CD integration:
+
+```bash
+acc upgrade --json
+```
+
+**Output:**
+```json
+{
+  "currentVersion": "v0.1.5",
+  "targetVersion": "v0.1.6",
+  "updated": true,
+  "message": "Successfully upgraded from v0.1.5 to v0.1.6",
+  "assetName": "acc_0.1.6_linux_amd64.tar.gz",
+  "checksum": "a1b2c3d4e5f67890...",
+  "installPath": "/usr/local/bin/acc"
+}
+```
+
+### Platform Support
+
+The upgrade command automatically detects your platform and downloads the correct binary:
+
+| OS | Architecture | Asset Pattern |
+|----|--------------|---------------|
+| Linux | amd64 | `acc_<version>_linux_amd64.tar.gz` |
+| Linux | arm64 | `acc_<version>_linux_arm64.tar.gz` |
+| macOS | amd64 (Intel) | `acc_<version>_darwin_amd64.tar.gz` |
+| macOS | arm64 (Apple Silicon) | `acc_<version>_darwin_arm64.tar.gz` |
+| Windows | amd64 | `acc_<version>_windows_amd64.zip` |
+
+### Windows Special Handling
+
+On Windows, running executables cannot be replaced directly due to file locking. The upgrade command handles this by:
+
+1. Downloading the new version to `acc.new.exe`
+2. Providing manual replacement instructions:
+
+```
+Windows binary downloaded to: C:\path\to\acc.new.exe
+
+To complete upgrade:
+1. Close this terminal
+2. Rename acc.exe to acc.exe.old
+3. Rename acc.new.exe to acc.exe
+4. Delete acc.exe.old
+```
+
+### Security
+
+The upgrade process includes multiple security checks:
+
+- **Official sources only** - Downloads from `github.com/cloudcwfranck/acc` releases
+- **SHA256 verification** - All downloads verified against official checksums.txt
+- **Checksum mismatch = abort** - Installation blocked on verification failure
+- **Download failure = abort** - No partial or corrupted updates
+- **Atomic replacement** - Unix systems use atomic rename (non-Windows)
+- **Backup/rollback** - Failed installations restore previous binary
+
+### Already Up-to-Date
+
+If you're already running the latest version:
+
+```bash
+$ acc upgrade
+Already up-to-date (version v0.1.6)
+```
+
+Exit code is `0` (success) when already up-to-date.
+
+### CI/CD Usage
+
+Pin versions in CI/CD pipelines for reproducibility:
+
+```yaml
+# GitHub Actions example
+- name: Install acc
+  run: |
+    curl -sSfL https://github.com/cloudcwfranck/acc/releases/download/v0.1.6/acc_0.1.6_linux_amd64.tar.gz | tar xz
+    chmod +x acc
+    sudo mv acc /usr/local/bin/
+
+# Or use acc upgrade for latest
+- name: Upgrade acc
+  run: acc upgrade --version 0.1.6
+```
+
+### Troubleshooting
+
+**Issue: "checksum mismatch"**
+- The downloaded binary's checksum doesn't match official checksums.txt
+- This could indicate network corruption or a compromised download
+- Solution: Retry the upgrade, check network connection
+
+**Issue: "no release asset found"**
+- Your OS/ARCH combination doesn't have a pre-built binary
+- Solution: Build from source (see Installation section)
+
+**Issue: Permission denied (Unix)**
+- The binary is installed in a protected directory (e.g., `/usr/local/bin/`)
+- Solution: Run with sudo: `sudo acc upgrade`
+
+**Issue: Cannot replace running executable (Windows)**
+- Expected behavior on Windows
+- Solution: Follow the manual replacement instructions provided
 
 ## Security Model
 

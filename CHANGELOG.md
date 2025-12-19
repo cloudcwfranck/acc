@@ -16,6 +16,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.1.6] - 2025-12-19
+
+### Added - Self-Update Capability
+
+**This release adds `acc upgrade` for automatic self-updating with cryptographic verification.**
+
+**What's New:**
+
+- ✅ **Self-update command** - `acc upgrade` downloads and installs the latest stable release from GitHub
+- ✅ **Version targeting** - `acc upgrade --version vX.Y.Z` installs specific versions
+- ✅ **Dry-run mode** - `acc upgrade --dry-run` shows what would happen without downloading
+- ✅ **SHA256 verification** - All downloads verified against checksums.txt before installation
+- ✅ **Atomic replacement** - Unix systems use atomic rename with backup/rollback
+- ✅ **Platform detection** - Automatic OS/ARCH detection (linux, darwin, windows × amd64, arm64)
+- ✅ **Safe installation** - Backup created before replacement, restored on failure
+- ✅ **Windows support** - Manual replacement instructions for file lock scenarios
+- ✅ **Already-latest detection** - Skips download if current version matches latest
+
+**Usage:**
+
+```bash
+# Upgrade to latest version
+acc upgrade
+
+# Upgrade to specific version
+acc upgrade --version v0.1.7
+
+# Show what would happen without installing
+acc upgrade --dry-run
+
+# JSON output for automation
+acc upgrade --json
+```
+
+**Output Example:**
+
+```
+Current version: v0.1.5
+Target version:  v0.1.6
+Asset:           acc_0.1.6_linux_amd64.tar.gz
+Checksum:        a1b2c3d4e5f6...
+Installed to:    /usr/local/bin/acc
+
+Successfully upgraded from v0.1.5 to v0.1.6
+```
+
+**Windows Behavior:**
+
+On Windows, the running executable cannot be replaced directly due to file locking. The upgrade command downloads the new version to `acc.new.exe` and provides manual replacement instructions:
+
+```
+Windows binary downloaded to: C:\path\to\acc.new.exe
+
+To complete upgrade:
+1. Close this terminal
+2. Rename acc.exe to acc.exe.old
+3. Rename acc.new.exe to acc.exe
+4. Delete acc.exe.old
+```
+
+**Security:**
+
+- All releases downloaded from official GitHub repository (github.com/cloudcwfranck/acc)
+- SHA256 checksums verified against signed checksums.txt
+- Download failures abort installation (no partial updates)
+- Checksum mismatches abort installation
+- Backup/rollback on installation failure
+
+### Impact
+
+**Previous versions required manual installation:**
+- Users had to download releases manually from GitHub
+- No automatic checksum verification
+- Risk of partial or corrupted downloads
+- No built-in version targeting
+
+**v0.1.6 provides seamless updates:**
+- Single command to stay current
+- Cryptographic verification of all downloads
+- Safe atomic replacement with rollback
+- Platform-specific handling for reliability
+
+### Testing
+
+- ✅ Added `TestSelectAsset` - Verifies asset name selection for linux/amd64, darwin/arm64, darwin/amd64, windows/amd64
+- ✅ Added `TestNormalizeVersion` - Verifies version string normalization (with/without "v" prefix)
+- ✅ Added `TestFetchRelease` - Verifies GitHub API integration with mock server
+- ✅ Added `TestFetchReleaseNotFound` - Verifies 404 error handling
+- ✅ Added `TestFetchChecksums` - Verifies checksum file parsing (ignores comments/blanks)
+- ✅ Added `TestUpgradeAlreadyLatest` - Verifies already-latest returns Updated=false
+- ✅ Added `TestUpgradeDryRun` - Verifies dry-run mode doesn't install
+- ✅ Added `TestUpgradeAssetNotFound` - Verifies missing asset error
+- ✅ Added `TestComputeSHA256` - Verifies checksum computation correctness
+- ✅ Added `TestExtractTarGz` - Verifies archive extraction
+- ✅ All tests use httptest mock servers (no real internet required)
+- ✅ Environment variable overrides for testing (ACC_UPGRADE_API_BASE, ACC_UPGRADE_DOWNLOAD_BASE, ACC_UPGRADE_DISABLE_INSTALL)
+
 ## [0.1.5] - 2025-01-19
 
 ### Fixed - Attestation UX & Inspect State Correctness
@@ -404,7 +501,8 @@ acc follows [Semantic Versioning](https://semver.org/):
 
 ---
 
-[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/cloudcwfranck/acc/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/cloudcwfranck/acc/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/cloudcwfranck/acc/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/cloudcwfranck/acc/compare/v0.1.2...v0.1.3
