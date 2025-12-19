@@ -6,6 +6,7 @@ import (
 
 	"github.com/cloudcwfranck/acc/internal/build"
 	"github.com/cloudcwfranck/acc/internal/config"
+	"github.com/cloudcwfranck/acc/internal/inspect"
 	"github.com/cloudcwfranck/acc/internal/runtime"
 	"github.com/cloudcwfranck/acc/internal/ui"
 	"github.com/cloudcwfranck/acc/internal/verify"
@@ -278,14 +279,46 @@ func NewAttestCmd() *cobra.Command {
 }
 
 func NewInspectCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "inspect",
+	var imageRef string
+
+	cmd := &cobra.Command{
+		Use:   "inspect [image]",
 		Short: "Inspect artifact trust summary",
 		Long:  "Display human-readable trust summary for an artifact",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented yet")
+			// Load config
+			cfg, err := config.Load(configFile)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w\n\nHint: Run 'acc init' to create a configuration file", err)
+			}
+
+			ref := imageRef
+			if len(args) > 0 {
+				ref = args[0]
+			}
+
+			if ref == "" {
+				return fmt.Errorf("image reference required\n\nUsage: acc inspect <image>")
+			}
+
+			// Inspect
+			result, err := inspect.Inspect(cfg, ref, jsonFlag)
+			if err != nil {
+				return err
+			}
+
+			if jsonFlag {
+				fmt.Println(result.FormatJSON())
+			}
+
+			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to inspect")
+
+	return cmd
 }
 
 func NewConfigCmd() *cobra.Command {
