@@ -1,0 +1,11 @@
+{
+  "status": "pass",
+  "sbomPresent": true,
+  "policyResult": {
+    "allow": true,
+    "violations": [],
+    "warnings": []
+  },
+  "attestations": [],
+  "violations": []
+}

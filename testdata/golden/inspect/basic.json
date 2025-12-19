@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "v0.1",
+  "imageRef": "test:latest",
+  "digest": "abc123def456",
+  "status": "pass",
+  "artifacts": {
+    "sbomPath": ".acc/sbom/test.spdx.json",
+    "sbomFormat": "spdx",
+    "attestations": [
+      ".acc/attestations/test/2025-01-15-attestation.json"
+    ]
+  },
+  "policy": {
+    "mode": "enforce",
+    "policyPack": ".acc/policy",
+    "waivers": []
+  },
+  "metadata": {
+    "digestResolved": "true",
+    "lastVerified": "2025-01-15T10:00:00Z"
+  },
+  "timestamp": "2025-01-15T10:05:00Z"
+}
