@@ -8,25 +8,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Distribution Channels**
-  - Homebrew Formula draft in `packaging/homebrew/acc.rb` for future tap publishing
-  - Container image support via `Dockerfile.release` for GHCR distribution
-  - CI/CD usage examples in README for automated pipeline integration
-  - Comprehensive distribution guide in `packaging/README.md`
-- **Documentation**
-  - Complete Windows PowerShell installation instructions
-  - macOS Intel detailed installation steps
-  - Multi-architecture container build documentation
+- Nothing yet
 
 ### Changed
-- **Release Artifacts Naming** - Changed from dashes to underscores for canonical format:
-  - `acc-0.1.0-linux-amd64.tar.gz` → `acc_0.1.0_linux_amd64.tar.gz`
-  - Aligns with industry standards (Homebrew, GoReleaser)
-- **GitHub Release Notes** - Automatic installation instructions appended to release notes
-- **README Install Section** - Updated all artifact URLs to match new naming convention
+- Nothing yet
 
 ### Fixed
 - Nothing yet
+
+## [0.1.1] - 2025-01-19
+
+### Security
+- **CRITICAL: Policy deny rules now enforced** - Fixed security bug where deny rules in Rego policies were evaluated but not enforced
+- Verification now correctly fails when policy deny rules are triggered
+- Deny violations properly surfaced in CLI output and JSON responses
+- Non-zero exit codes returned on policy failures as expected
+
+### Fixed
+- **Policy Evaluation** - `acc verify` now reads and enforces deny rules from `.acc/policy/*.rego` files
+- **JSON Output** - `policyResult.allow` correctly set to `false` when deny rules exist
+- **Policy Violations** - Deny messages now properly populated in `policyResult.violations` array
+- **Attestation Discovery** - `acc inspect` now recursively searches `.acc/attestations/<digest>/` subdirectories
+- **Attestation Visibility** - Attestation count and paths now correctly displayed in inspect output
+
+### Impact
+This release fixes a critical enforcement gap where policy deny rules were parsed but ignored during verification. Users relying on deny rules for security enforcement **must upgrade immediately** to v0.1.1.
+
+**Before v0.1.1:** `deny` rules had no effect - verification always passed
+**After v0.1.1:** `deny` rules are authoritative - verification fails when triggered
+
+**Commands affected:** `acc verify`, `acc run`, `acc push`, `acc promote` (all verification-gated commands)
+
+### Testing
+- Added comprehensive tests for policy deny enforcement
+- Added tests for JSON output correctness with deny semantics
+- Added tests for attestation discovery in subdirectories
+- All tests pass on v0.1.1, would fail on v0.1.0
 
 ## [0.1.0] - 2025-01-19
 
