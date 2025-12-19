@@ -10,12 +10,19 @@ import (
 
 // Config represents the acc configuration (AGENTS.md Section 5.3)
 type Config struct {
-	Project  ProjectConfig  `mapstructure:"project"`
-	Build    BuildConfig    `mapstructure:"build"`
-	Registry RegistryConfig `mapstructure:"registry"`
-	Policy   PolicyConfig   `mapstructure:"policy"`
-	Signing  SigningConfig  `mapstructure:"signing"`
-	SBOM     SBOMConfig     `mapstructure:"sbom"`
+	Project      ProjectConfig             `mapstructure:"project"`
+	Build        BuildConfig               `mapstructure:"build"`
+	Registry     RegistryConfig            `mapstructure:"registry"`
+	Policy       PolicyConfig              `mapstructure:"policy"`
+	Signing      SigningConfig             `mapstructure:"signing"`
+	SBOM         SBOMConfig                `mapstructure:"sbom"`
+	Environments map[string]EnvConfig      `mapstructure:"environments"`
+}
+
+// EnvConfig represents environment-specific configuration
+type EnvConfig struct {
+	Policy   *PolicyConfig   `mapstructure:"policy"`
+	Registry *RegistryConfig `mapstructure:"registry"`
 }
 
 type ProjectConfig struct {
@@ -121,6 +128,31 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("sbom.format must be 'spdx' or 'cyclonedx'")
 	}
 	return nil
+}
+
+// GetPolicyForEnv returns the policy config for a specific environment
+// If environment-specific policy is defined, it overrides the default
+func (c *Config) GetPolicyForEnv(env string) PolicyConfig {
+	if env != "" && c.Environments != nil {
+		if envCfg, ok := c.Environments[env]; ok {
+			if envCfg.Policy != nil {
+				return *envCfg.Policy
+			}
+		}
+	}
+	return c.Policy
+}
+
+// GetRegistryForEnv returns the registry config for a specific environment
+func (c *Config) GetRegistryForEnv(env string) RegistryConfig {
+	if env != "" && c.Environments != nil {
+		if envCfg, ok := c.Environments[env]; ok {
+			if envCfg.Registry != nil {
+				return *envCfg.Registry
+			}
+		}
+	}
+	return c.Registry
 }
 
 // DefaultConfig returns a default configuration template

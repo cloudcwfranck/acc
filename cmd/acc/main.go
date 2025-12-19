@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/cloudcwfranck/acc/internal/build"
 	"github.com/cloudcwfranck/acc/internal/config"
 	"github.com/cloudcwfranck/acc/internal/inspect"
+	"github.com/cloudcwfranck/acc/internal/promote"
 	"github.com/cloudcwfranck/acc/internal/runtime"
 	"github.com/cloudcwfranck/acc/internal/ui"
 	"github.com/cloudcwfranck/acc/internal/verify"
@@ -247,14 +249,52 @@ func NewPushCmd() *cobra.Command {
 }
 
 func NewPromoteCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "promote",
+	var (
+		imageRef  string
+		targetEnv string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "promote [image] --to <env>",
 		Short: "Re-verify and promote workload",
 		Long:  "Re-verify, apply environment-specific policy, and retag without rebuild",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented yet")
+			// Load config
+			cfg, err := config.Load(configFile)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w\n\nHint: Run 'acc init' to create a configuration file", err)
+			}
+
+			ref := imageRef
+			if len(args) > 0 {
+				ref = args[0]
+			}
+
+			if ref == "" {
+				return fmt.Errorf("image reference required\n\nUsage: acc promote <image> --to <env>")
+			}
+
+			// Promote
+			result, err := promote.Promote(cfg, ref, targetEnv, jsonFlag)
+			if err != nil {
+				return err
+			}
+
+			if jsonFlag {
+				data, _ := json.MarshalIndent(result, "", "  ")
+				fmt.Println(string(data))
+			}
+
+			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to promote")
+	cmd.Flags().StringVar(&targetEnv, "to", "", "target environment (required)")
+	cmd.MarkFlagRequired("to")
+
+	return cmd
 }
 
 func NewPolicyCmd() *cobra.Command {
