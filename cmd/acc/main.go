@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cloudcwfranck/acc/internal/attest"
 	"github.com/cloudcwfranck/acc/internal/build"
 	"github.com/cloudcwfranck/acc/internal/config"
 	"github.com/cloudcwfranck/acc/internal/inspect"
@@ -268,14 +269,46 @@ func NewPolicyCmd() *cobra.Command {
 }
 
 func NewAttestCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "attest",
-		Short: "Attach attestations to artifacts",
-		Long:  "Attach attestations (SLSA, build metadata, env approval)",
+	var imageRef string
+
+	cmd := &cobra.Command{
+		Use:   "attest [image]",
+		Short: "Create attestation for artifact",
+		Long:  "Create minimal attestation with build metadata and policy hash",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented yet")
+			// Load config
+			cfg, err := config.Load(configFile)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w\n\nHint: Run 'acc init' to create a configuration file", err)
+			}
+
+			ref := imageRef
+			if len(args) > 0 {
+				ref = args[0]
+			}
+
+			if ref == "" {
+				return fmt.Errorf("image reference required\n\nUsage: acc attest <image>")
+			}
+
+			// Create attestation
+			result, err := attest.Attest(cfg, ref, jsonFlag)
+			if err != nil {
+				return err
+			}
+
+			if jsonFlag {
+				fmt.Println(result.FormatJSON())
+			}
+
+			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to attest")
+
+	return cmd
 }
 
 func NewInspectCmd() *cobra.Command {
