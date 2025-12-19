@@ -11,6 +11,7 @@ import (
 
 	"github.com/cloudcwfranck/acc/internal/config"
 	"github.com/cloudcwfranck/acc/internal/ui"
+	"github.com/cloudcwfranck/acc/internal/waivers"
 )
 
 // InspectResult represents the inspection output
@@ -96,6 +97,21 @@ func Inspect(cfg *config.Config, imageRef string, outputJSON bool) (*InspectResu
 	if lastVerify != nil {
 		result.Status = lastVerify.Status
 		result.Metadata["lastVerified"] = lastVerify.Timestamp
+	}
+
+	// Load waivers and check expiry status
+	loadedWaivers, err := waivers.LoadWaivers()
+	if err == nil && len(loadedWaivers) > 0 {
+		inspectWaivers := make([]Waiver, 0, len(loadedWaivers))
+		for _, w := range loadedWaivers {
+			inspectWaivers = append(inspectWaivers, Waiver{
+				RuleID:        w.RuleID,
+				Justification: w.Justification,
+				Expiry:        w.Expiry,
+				Expired:       w.IsExpired(),
+			})
+		}
+		result.Policy.Waivers = inspectWaivers
 	}
 
 	// Output results
