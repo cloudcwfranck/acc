@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cloudcwfranck/acc/internal/config"
@@ -589,10 +590,58 @@ func saveVerifyState(imageRef string, result *VerifyResult) error {
 		return fmt.Errorf("failed to marshal state: %w", err)
 	}
 
+	// Save to global last_verify.json (for backward compatibility)
 	stateFile := filepath.Join(stateDir, "last_verify.json")
 	if err := os.WriteFile(stateFile, data, 0644); err != nil {
 		return fmt.Errorf("failed to write state file: %w", err)
 	}
 
+	// v0.1.5: Also save to digest-scoped file for per-image state
+	digest, err := resolveImageDigest(imageRef)
+	if err == nil && digest != "" {
+		// Create verify subdirectory
+		verifyStateDir := filepath.Join(stateDir, "verify")
+		if err := os.MkdirAll(verifyStateDir, 0755); err != nil {
+			// Non-fatal: just log and continue
+			return nil
+		}
+
+		// Save to .acc/state/verify/<digest>.json
+		digestFile := filepath.Join(verifyStateDir, digest+".json")
+		if err := os.WriteFile(digestFile, data, 0644); err != nil {
+			// Non-fatal: just log and continue
+			return nil
+		}
+	}
+
 	return nil
+}
+
+// resolveImageDigest resolves an image reference to its digest
+// v0.1.5: Added for digest-scoped state storage
+func resolveImageDigest(imageRef string) (string, error) {
+	tools := []struct {
+		name string
+		args []string
+	}{
+		{"docker", []string{"inspect", "--format={{.Id}}", imageRef}},
+		{"podman", []string{"inspect", "--format={{.Id}}", imageRef}},
+		{"nerdctl", []string{"inspect", "--format={{.Id}}", imageRef}},
+	}
+
+	for _, tool := range tools {
+		if _, err := exec.LookPath(tool.name); err == nil {
+			cmd := exec.Command(tool.name, tool.args...)
+			output, err := cmd.Output()
+			if err == nil {
+				digest := strings.TrimSpace(string(output))
+				digest = strings.TrimPrefix(digest, "sha256:")
+				if digest != "" {
+					return digest, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("could not resolve digest")
 }

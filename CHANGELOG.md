@@ -16,6 +16,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.1.5] - 2025-01-19
+
+### Fixed - Attestation UX & Inspect State Correctness
+
+**This release fixes UX and state correctness bugs discovered during v0.1.4 validation.**
+
+**The Bugs:**
+
+1. **Misleading attestation messaging**: `acc attest` printed "Creating attestation..." before validation, even when attestation failed due to missing state or image mismatch
+2. **Incorrect inspect status**: `acc inspect <image>` showed the last global verification result instead of per-image status, causing Image A's status to be overwritten by Image B's verification
+
+**What Was Broken:**
+
+- `acc attest` printed "ℹ Creating attestation for demo-app:ok" before checking if verification state exists or matches the image
+- When attestation failed validation, the creation message had already appeared, misleading users into thinking an attestation was created
+- `acc inspect` loaded from `.acc/state/last_verify.json` (global), not per-image state
+- Verifying Image A (PASS), then Image B (FAIL), then inspecting Image A would incorrectly show FAIL
+
+**What's Fixed in v0.1.5:**
+
+- ✅ **Attestation validation first** - All validation checks (state exists, image matches) run BEFORE printing creation message
+- ✅ **Clear failure messages** - Failed validation prints errors without misleading "Creating..." message
+- ✅ **Digest-scoped state** - Verification state now saved to both global and per-digest files (`.acc/state/verify/<digest>.json`)
+- ✅ **Per-image inspect** - `acc inspect` loads digest-scoped state when available, falls back to global
+- ✅ **Backward compatible** - Global `last_verify.json` still written for older tools/workflows
+
+### Impact
+
+**v0.1.4 had confusing UX:**
+- Attestation printed "Creating..." even when it immediately failed
+- Inspect showed wrong status for images after verifying another image
+
+**v0.1.5 provides accurate UX:**
+- Attestation only prints creation message after validation succeeds
+- Inspect shows correct per-image verification status
+- Each image maintains its own verification history
+
+### Testing
+
+- ✅ Added `TestAttest_NoCreationMessageOnFailure` - Verifies no creation message when validation fails
+- ✅ Added `TestAttest_CreationMessageOnlyOnSuccess` - Verifies creation message only after validation
+- ✅ Added `TestInspect_PerImageVerificationState` - Verifies per-image state loading
+- ✅ Added `TestInspect_DoesNotLeakLastVerify` - Verifies no cross-contamination between images
+- ✅ All existing tests pass on v0.1.5
+
 ## [0.1.4] - 2025-01-19
 
 ### Fixed - Panic Prevention & State Persistence
@@ -359,7 +404,8 @@ acc follows [Semantic Versioning](https://semver.org/):
 
 ---
 
-[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/cloudcwfranck/acc/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/cloudcwfranck/acc/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/cloudcwfranck/acc/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/cloudcwfranck/acc/compare/v0.1.1...v0.1.2

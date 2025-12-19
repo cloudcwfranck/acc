@@ -92,11 +92,13 @@ func Inspect(cfg *config.Config, imageRef string, outputJSON bool) (*InspectResu
 	attestations := findAttestations()
 	result.Artifacts.Attestations = attestations
 
-	// Load last verification status if available
-	lastVerify := loadLastVerifyStatus()
+	// v0.1.5: Load verification status for THIS image (digest-scoped)
+	// If digest is available, try loading per-image state first
+	lastVerify := loadVerifyStatusForImage(digest)
 	if lastVerify != nil {
 		result.Status = lastVerify.Status
 		result.Metadata["lastVerified"] = lastVerify.Timestamp
+		result.Metadata["stateSource"] = "digest-scoped"
 	}
 
 	// Load waivers and check expiry status
@@ -236,6 +238,31 @@ func loadLastVerifyStatus() *LastVerifyStatus {
 	var status LastVerifyStatus
 	if err := json.Unmarshal(data, &status); err != nil {
 		return nil
+	}
+
+	return &status
+}
+
+// loadVerifyStatusForImage loads verification status for a specific image digest
+// v0.1.5: Added for per-image state tracking
+func loadVerifyStatusForImage(digest string) *LastVerifyStatus {
+	if digest == "" {
+		// No digest available, fall back to global last_verify.json
+		return loadLastVerifyStatus()
+	}
+
+	// Try loading digest-scoped state first
+	digestFile := filepath.Join(".acc", "state", "verify", digest+".json")
+	data, err := os.ReadFile(digestFile)
+	if err != nil {
+		// Digest-scoped file not found, fall back to global
+		return loadLastVerifyStatus()
+	}
+
+	var status LastVerifyStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		// Failed to parse digest-scoped state, fall back to global
+		return loadLastVerifyStatus()
 	}
 
 	return &status
