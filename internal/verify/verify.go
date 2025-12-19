@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ type VerifyResult struct {
 	PolicyResult *PolicyResult     `json:"policyResult"`
 	Attestations []string          `json:"attestations"`
 	Violations   []PolicyViolation `json:"violations"`
+	Input        *RegoInput        `json:"input,omitempty"` // v0.1.3: Rego input document
 }
 
 // PolicyResult represents policy evaluation result
@@ -131,6 +133,18 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		ui.PrintInfo("Evaluating policy...")
 	}
 
+	// Build Rego input for policy evaluation
+	regoInput, err := buildRegoInput(cfg, imageRef, forPromotion)
+	if err != nil {
+		// Don't fail if input building fails, just log warning
+		if !outputJSON {
+			ui.PrintWarning(fmt.Sprintf("Failed to build Rego input: %v", err))
+		}
+	} else {
+		// Store input in result for policy explain
+		result.Input = regoInput
+	}
+
 	policyResult, err := evaluatePolicy(cfg, imageRef, forPromotion)
 	if err != nil {
 		return nil, fmt.Errorf("policy evaluation failed: %w", err)
@@ -222,7 +236,239 @@ func checkSBOMExists(cfg *config.Config) (bool, error) {
 	return true, nil
 }
 
-// evaluatePolicy evaluates the policy by parsing Rego deny objects
+// RegoInput represents the input document passed to Rego policy evaluation
+type RegoInput struct {
+	Config      ImageConfig      `json:"config"`
+	SBOM        SBOMInfo         `json:"sbom"`
+	Attestation AttestationInfo  `json:"attestation"`
+	Promotion   bool             `json:"promotion"`
+}
+
+// ImageConfig contains image configuration fields
+type ImageConfig struct {
+	User   string            `json:"User"`
+	Labels map[string]string `json:"Labels"`
+}
+
+// SBOMInfo contains SBOM presence information
+type SBOMInfo struct {
+	Present bool `json:"present"`
+}
+
+// AttestationInfo contains attestation presence information
+type AttestationInfo struct {
+	Present bool `json:"present"`
+}
+
+// inspectImageConfig inspects an image and returns its config
+func inspectImageConfig(imageRef string) (*ImageConfig, error) {
+	// Try docker/podman/nerdctl to inspect image
+	tools := []string{"docker", "podman", "nerdctl"}
+
+	for _, tool := range tools {
+		if _, err := exec.LookPath(tool); err == nil {
+			// Use docker inspect to get full config as JSON
+			cmd := exec.Command(tool, "inspect", imageRef)
+			output, err := cmd.Output()
+			if err != nil {
+				continue
+			}
+
+			// Parse JSON output
+			var inspectOutput []struct {
+				Config struct {
+					User   string            `json:"User"`
+					Labels map[string]string `json:"Labels"`
+				} `json:"Config"`
+			}
+
+			if err := json.Unmarshal(output, &inspectOutput); err != nil {
+				continue
+			}
+
+			if len(inspectOutput) > 0 {
+				labels := inspectOutput[0].Config.Labels
+				if labels == nil {
+					labels = make(map[string]string)
+				}
+				return &ImageConfig{
+					User:   inspectOutput[0].Config.User,
+					Labels: labels,
+				}, nil
+			}
+		}
+	}
+
+	// If no tool found or inspection failed, return empty config
+	return &ImageConfig{
+		User:   "",
+		Labels: make(map[string]string),
+	}, nil
+}
+
+// buildRegoInput constructs the input document for Rego evaluation
+func buildRegoInput(cfg *config.Config, imageRef string, forPromotion bool) (*RegoInput, error) {
+	// Get image configuration
+	imageConfig, err := inspectImageConfig(imageRef)
+	if err != nil {
+		// If we can't inspect, use empty config rather than failing
+		imageConfig = &ImageConfig{
+			User:   "",
+			Labels: make(map[string]string),
+		}
+	}
+
+	// Check for SBOM
+	sbomPresent, _ := checkSBOMExists(cfg)
+
+	// Check for attestations
+	attestationPresent := checkAttestations(cfg)
+
+	return &RegoInput{
+		Config:      *imageConfig,
+		SBOM:        SBOMInfo{Present: sbomPresent},
+		Attestation: AttestationInfo{Present: attestationPresent},
+		Promotion:   forPromotion,
+	}, nil
+}
+
+// evaluateRego runs OPA evaluation and returns violations
+func evaluateRego(policyDir string, input *RegoInput) ([]PolicyViolation, error) {
+	// Check if opa is available
+	opaPath, err := exec.LookPath("opa")
+	if err != nil {
+		// Fallback to text parsing if OPA not available
+		// This maintains backwards compatibility
+		return evaluateRegoFallback(policyDir)
+	}
+
+	// Marshal input to JSON
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal input: %w", err)
+	}
+
+	// Write input to temp file
+	inputFile, err := os.CreateTemp("", "acc-rego-input-*.json")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(inputFile.Name())
+	defer inputFile.Close()
+
+	if _, err := inputFile.Write(inputJSON); err != nil {
+		return nil, fmt.Errorf("failed to write input: %w", err)
+	}
+	inputFile.Close()
+
+	// Run OPA eval
+	cmd := exec.Command(opaPath, "eval",
+		"--data", policyDir,
+		"--input", inputFile.Name(),
+		"--format", "json",
+		"data.acc.policy.deny")
+
+	output, err := cmd.Output()
+	if err != nil {
+		// OPA command failed - try fallback
+		return evaluateRegoFallback(policyDir)
+	}
+
+	// Parse OPA output
+	var opaResult struct {
+		Result []struct {
+			Expressions []struct {
+				Value interface{} `json:"value"`
+			} `json:"expressions"`
+		} `json:"result"`
+	}
+
+	if err := json.Unmarshal(output, &opaResult); err != nil {
+		return nil, fmt.Errorf("failed to parse OPA output: %w", err)
+	}
+
+	// Extract violations from OPA result
+	var violations []PolicyViolation
+	if len(opaResult.Result) > 0 && len(opaResult.Result[0].Expressions) > 0 {
+		value := opaResult.Result[0].Expressions[0].Value
+		if value != nil {
+			// Convert to violations
+			violations = parseOPADenySet(value)
+		}
+	}
+
+	return violations, nil
+}
+
+// parseOPADenySet parses the deny set from OPA output
+func parseOPADenySet(value interface{}) []PolicyViolation {
+	var violations []PolicyViolation
+
+	// OPA returns deny as a set/array of objects
+	switch v := value.(type) {
+	case []interface{}:
+		for _, item := range v {
+			if violation := parseViolationObject(item); violation != nil {
+				violations = append(violations, *violation)
+			}
+		}
+	case map[string]interface{}:
+		// Single violation as object
+		if violation := parseViolationObject(v); violation != nil {
+			violations = append(violations, *violation)
+		}
+	}
+
+	return violations
+}
+
+// parseViolationObject parses a single violation object
+func parseViolationObject(obj interface{}) *PolicyViolation {
+	m, ok := obj.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	violation := &PolicyViolation{
+		Rule:     getString(m, "rule", "policy-violation"),
+		Severity: getString(m, "severity", "error"),
+		Result:   getString(m, "result", "fail"),
+		Message:  getString(m, "message", "Policy deny rule triggered"),
+	}
+
+	return violation
+}
+
+// getString safely extracts a string from a map
+func getString(m map[string]interface{}, key, defaultValue string) string {
+	if val, ok := m[key].(string); ok {
+		return val
+	}
+	return defaultValue
+}
+
+// evaluateRegoFallback uses text parsing when OPA is not available
+func evaluateRegoFallback(policyDir string) ([]PolicyViolation, error) {
+	// Read all .rego files
+	files, err := filepath.Glob(filepath.Join(policyDir, "*.rego"))
+	if err != nil {
+		return nil, err
+	}
+
+	var policyContent string
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		policyContent += string(content) + "\n"
+	}
+
+	// Use the existing text parser as fallback
+	return parseDenyObjects(policyContent), nil
+}
+
+// evaluatePolicy evaluates the policy by running Rego with proper input
 func evaluatePolicy(cfg *config.Config, imageRef string, forPromotion bool) (*PolicyResult, error) {
 	result := &PolicyResult{
 		Allow:      true,
@@ -250,19 +496,17 @@ func evaluatePolicy(cfg *config.Config, imageRef string, forPromotion bool) (*Po
 		return result, nil
 	}
 
-	// Load all policy content
-	var policyContent string
-	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read policy file %s: %w", file, err)
-		}
-		policyContent += string(content) + "\n"
+	// Build Rego input document
+	regoInput, err := buildRegoInput(cfg, imageRef, forPromotion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build Rego input: %w", err)
 	}
 
-	// Parse structured deny objects from Rego
-	// This extracts deny objects verbatim - no synthetic violations
-	violations := parseDenyObjects(policyContent)
+	// Evaluate policy with OPA
+	violations, err := evaluateRego(policyDir, regoInput)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate policy: %w", err)
+	}
 
 	if len(violations) > 0 {
 		// If ANY deny violations exist, policy fails
