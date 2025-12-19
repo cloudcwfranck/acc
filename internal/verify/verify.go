@@ -14,10 +14,10 @@ import (
 
 // VerifyResult represents the output of a verification operation
 type VerifyResult struct {
-	Status       string          `json:"status"` // pass, warn, fail
-	SBOMPresent  bool            `json:"sbomPresent"`
-	PolicyResult *PolicyResult   `json:"policyResult"`
-	Attestations []string        `json:"attestations"`
+	Status       string            `json:"status"` // pass, warn, fail
+	SBOMPresent  bool              `json:"sbomPresent"`
+	PolicyResult *PolicyResult     `json:"policyResult"`
+	Attestations []string          `json:"attestations"`
 	Violations   []PolicyViolation `json:"violations"`
 }
 
@@ -280,10 +280,10 @@ func (vr *VerifyResult) ExitCode() int {
 
 // VerifyState represents the persisted verification state
 type VerifyState struct {
-	ImageRef  string         `json:"imageRef"`
-	Status    string         `json:"status"`
-	Timestamp string         `json:"timestamp"`
-	Result    *VerifyResult  `json:"result"`
+	ImageRef  string        `json:"imageRef"`
+	Status    string        `json:"status"`
+	Timestamp string        `json:"timestamp"`
+	Result    *VerifyResult `json:"result"`
 }
 
 // saveVerifyState persists verification results to .acc/state/last_verify.json
