@@ -160,8 +160,10 @@ acc run myimage:latest --cap-add NET_ADMIN
 ### Verification Chain
 
 1. **Build** → OCI artifact + SBOM
-2. **Verify** → Policy evaluation + SBOM check
-3. **Run/Push/Promote** → Gated by verification
+2. **Verify** → Policy evaluation + SBOM check + state persistence
+3. **Inspect** → Trust summary with verification status
+4. **Attest** → Cryptographic attestation of verification results
+5. **Run/Push/Promote** → Gated by verification
 
 ### Runtime Security Defaults
 
@@ -256,19 +258,58 @@ acc inspect myapp:latest --json
 
 ### Create attestations
 
-```bash
-# Create attestation for an image
-acc attest myapp:latest
+Attestations capture verification results as deterministic, auditable artifacts:
 
-# Attestation includes:
-# - Image digest and reference
-# - Build metadata (tool, time, builder)
-# - Hash of last policy decision
-# - Project metadata
+```bash
+# First, build and verify the image
+acc build --tag myapp:latest
+acc verify myapp:latest
+
+# Inspect trust summary
+acc inspect myapp:latest
+
+# Create attestation (requires verification state)
+acc attest myapp:latest
 
 # View attestation in JSON
 acc attest myapp:latest --json
 ```
+
+**How attestations work:**
+
+1. **Requires verification state** - `acc attest` will fail if `.acc/state/last_verify.json` doesn't exist
+2. **Image reference validation** - Ensures the image matches the last verified image
+3. **Canonical hashing** - Creates deterministic hash of verification results with sorted violations
+4. **Structured storage** - Saves to `.acc/attestations/<image>/<timestamp>-attestation.json`
+5. **State tracking** - Updates `.acc/state/last_attestation.json` pointer
+
+**Attestation schema:**
+
+```json
+{
+  "schemaVersion": "v0.1",
+  "command": "attest",
+  "timestamp": "2025-01-15T10:30:00Z",
+  "subject": {
+    "imageRef": "myapp:latest",
+    "imageDigest": "sha256:abc123..."
+  },
+  "evidence": {
+    "sbomRef": ".acc/sbom/myapp-latest.spdx.json",
+    "policyPack": ".acc/policy",
+    "policyMode": "enforce",
+    "verificationStatus": "pass",
+    "verificationResultsHash": "sha256:def456..."
+  },
+  "metadata": {
+    "tool": "acc",
+    "toolVersion": "v0.1.0",
+    "gitCommit": "abc123def"
+  }
+}
+```
+
+The `verificationResultsHash` is computed using canonical JSON ordering, ensuring that identical verification results always produce the same hash regardless of field order.
 
 ### Promote workloads to environments
 

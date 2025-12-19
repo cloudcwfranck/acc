@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,40 +17,71 @@ import (
 	"github.com/cloudcwfranck/acc/internal/ui"
 )
 
-// Attestation represents a minimal v0 attestation
+// Attestation represents the v0 attestation format
 type Attestation struct {
 	SchemaVersion string            `json:"schemaVersion"`
-	Type          string            `json:"type"`
-	ImageRef      string            `json:"imageRef"`
-	Digest        string            `json:"digest,omitempty"`
+	Command       string            `json:"command"`
 	Timestamp     string            `json:"timestamp"`
-	BuildMetadata BuildMetadata     `json:"buildMetadata,omitempty"`
-	PolicyHash    string            `json:"policyHash,omitempty"`
-	Metadata      map[string]string `json:"metadata"`
+	Subject       Subject           `json:"subject"`
+	Evidence      Evidence          `json:"evidence"`
+	Metadata      AttestationMeta   `json:"metadata"`
 }
 
-// BuildMetadata contains build-related metadata
-type BuildMetadata struct {
-	BuildTool string            `json:"buildTool,omitempty"`
-	BuildTime string            `json:"buildTime,omitempty"`
-	Builder   string            `json:"builder,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
+// Subject identifies what is being attested
+type Subject struct {
+	ImageRef    string `json:"imageRef"`
+	ImageDigest string `json:"imageDigest,omitempty"`
+}
+
+// Evidence contains verification evidence
+type Evidence struct {
+	SBOMRef                   string `json:"sbomRef,omitempty"`
+	PolicyPack                string `json:"policyPack"`
+	PolicyMode                string `json:"policyMode"`
+	VerificationStatus        string `json:"verificationStatus"`
+	VerificationResultsHash   string `json:"verificationResultsHash"`
+}
+
+// AttestationMeta contains tool metadata
+type AttestationMeta struct {
+	Tool        string `json:"tool"`
+	ToolVersion string `json:"toolVersion"`
+	GitCommit   string `json:"gitCommit,omitempty"`
 }
 
 // AttestResult represents the result of attestation creation
 type AttestResult struct {
-	AttestationPath string      `json:"attestationPath"`
-	Attestation     Attestation `json:"attestation"`
+	OutputPath  string      `json:"outputPath"`
+	Attestation Attestation `json:"attestation"`
+}
+
+// VerifyState represents the persisted verification state (reused from verify package)
+type VerifyState struct {
+	ImageRef  string                 `json:"imageRef"`
+	Status    string                 `json:"status"`
+	Timestamp string                 `json:"timestamp"`
+	Result    map[string]interface{} `json:"result"`
 }
 
 // Attest creates an attestation for an image
-func Attest(cfg *config.Config, imageRef string, outputJSON bool) (*AttestResult, error) {
+func Attest(cfg *config.Config, imageRef, version, commit string, outputJSON bool) (*AttestResult, error) {
 	if imageRef == "" {
 		return nil, fmt.Errorf("image reference required")
 	}
 
+	// Load last verification state
+	verifyState, err := loadVerifyState()
+	if err != nil {
+		return nil, fmt.Errorf("verification state not found\n\nRemediation:\n  Run 'acc verify %s' first to generate verification results", imageRef)
+	}
+
 	if !outputJSON {
 		ui.PrintInfo(fmt.Sprintf("Creating attestation for %s", imageRef))
+	}
+
+	// Verify imageRef matches last verified image
+	if err := validateImageMatch(imageRef, verifyState); err != nil {
+		return nil, err
 	}
 
 	// Resolve digest
@@ -57,78 +90,282 @@ func Attest(cfg *config.Config, imageRef string, outputJSON bool) (*AttestResult
 		if !outputJSON {
 			ui.PrintWarning(fmt.Sprintf("Could not resolve digest: %v", err))
 		}
+		digest = ""
 	}
 
-	// Load last verify results to get policy hash
-	policyHash := loadPolicyHash()
+	// Compute canonical hash of verification results
+	resultsHash, err := computeCanonicalHash(verifyState)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute verification hash: %w", err)
+	}
+
+	// Get SBOM reference if available
+	sbomRef := getSBOMRef(cfg)
 
 	// Create attestation
 	attestation := Attestation{
 		SchemaVersion: "v0.1",
-		Type:          "acc.build.v0",
-		ImageRef:      imageRef,
-		Digest:        digest,
+		Command:       "attest",
 		Timestamp:     time.Now().UTC().Format(time.RFC3339),
-		BuildMetadata: getBuildMetadata(),
-		PolicyHash:    policyHash,
-		Metadata:      make(map[string]string),
+		Subject: Subject{
+			ImageRef:    imageRef,
+			ImageDigest: digest,
+		},
+		Evidence: Evidence{
+			SBOMRef:                 sbomRef,
+			PolicyPack:              ".acc/policy",
+			PolicyMode:              cfg.Policy.Mode,
+			VerificationStatus:      verifyState.Status,
+			VerificationResultsHash: resultsHash,
+		},
+		Metadata: AttestationMeta{
+			Tool:        "acc",
+			ToolVersion: version,
+			GitCommit:   commit,
+		},
 	}
 
-	// Add project metadata
-	attestation.Metadata["project"] = cfg.Project.Name
-	attestation.Metadata["policyMode"] = cfg.Policy.Mode
-	attestation.Metadata["sbomFormat"] = cfg.SBOM.Format
-
-	// Ensure attestations directory exists
-	attestDir := filepath.Join(".acc", "attestations")
-	if err := os.MkdirAll(attestDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create attestations directory: %w", err)
-	}
-
-	// Generate filename with timestamp and truncated digest
-	filename := fmt.Sprintf("attest_%s", time.Now().UTC().Format("20060102_150405"))
-	if digest != "" {
-		filename = fmt.Sprintf("attest_%s_%s", time.Now().UTC().Format("20060102_150405"), digest[:12])
-	}
-	filename += ".json"
-
-	attestPath := filepath.Join(attestDir, filename)
-
-	// Write attestation with deterministic ordering (json.MarshalIndent ensures key order)
-	data, err := json.MarshalIndent(attestation, "", "  ")
+	// Determine output path
+	outputPath, err := determineOutputPath(imageRef, digest)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal attestation: %w", err)
+		return nil, err
 	}
 
-	if err := os.WriteFile(attestPath, data, 0644); err != nil {
-		return nil, fmt.Errorf("failed to write attestation: %w", err)
+	// Write attestation file
+	if err := writeAttestation(outputPath, &attestation); err != nil {
+		return nil, err
+	}
+
+	// Update last_attestation.json pointer
+	if err := updateLastAttestationPointer(&attestation, outputPath); err != nil {
+		if !outputJSON {
+			ui.PrintWarning(fmt.Sprintf("Failed to update last attestation pointer: %v", err))
+		}
 	}
 
 	if !outputJSON {
-		ui.PrintSuccess(fmt.Sprintf("Attestation created: %s", attestPath))
-		fmt.Printf("\nAttestation Details:\n")
-		fmt.Printf("  Type:      %s\n", attestation.Type)
-		fmt.Printf("  Image:     %s\n", attestation.ImageRef)
-		if attestation.Digest != "" {
-			fmt.Printf("  Digest:    sha256:%s\n", attestation.Digest)
+		ui.PrintSuccess("Attestation created")
+		fmt.Printf("  Path:    %s\n", outputPath)
+		fmt.Printf("  Subject: %s\n", imageRef)
+		if digest != "" {
+			fmt.Printf("  Digest:  sha256:%s\n", digest[:12])
 		}
-		fmt.Printf("  Timestamp: %s\n", attestation.Timestamp)
-		if attestation.PolicyHash != "" {
-			fmt.Printf("  Policy:    %s (hash)\n", attestation.PolicyHash[:16])
-		}
+		fmt.Printf("  Hash:    %s\n", resultsHash[:16])
 	}
 
 	result := &AttestResult{
-		AttestationPath: attestPath,
-		Attestation:     attestation,
+		OutputPath:  outputPath,
+		Attestation: attestation,
 	}
 
 	return result, nil
 }
 
+// loadVerifyState loads the last verification state
+func loadVerifyState() (*VerifyState, error) {
+	stateFile := filepath.Join(".acc", "state", "last_verify.json")
+	data, err := os.ReadFile(stateFile)
+	if err != nil {
+		return nil, err
+	}
+
+	var state VerifyState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, fmt.Errorf("failed to parse verification state: %w", err)
+	}
+
+	return &state, nil
+}
+
+// validateImageMatch ensures the imageRef matches the last verified image
+func validateImageMatch(imageRef string, state *VerifyState) error {
+	// Normalize both refs for comparison (remove tags if comparing by digest)
+	if imageRef != state.ImageRef {
+		// Try to resolve and compare digests
+		currentDigest, err1 := resolveDigest(imageRef)
+		stateDigest, err2 := resolveDigest(state.ImageRef)
+
+		if err1 == nil && err2 == nil && currentDigest == stateDigest {
+			// Same image, different refs (e.g., tag vs digest)
+			return nil
+		}
+
+		return fmt.Errorf("image mismatch: attempting to attest '%s' but last verified image was '%s'\n\nRemediation:\n  Run 'acc verify %s' first", imageRef, state.ImageRef, imageRef)
+	}
+
+	return nil
+}
+
+// computeCanonicalHash computes a canonical SHA256 hash of verification results
+func computeCanonicalHash(state *VerifyState) (string, error) {
+	// Extract violations and waivers from state
+	result := state.Result
+	if result == nil {
+		result = make(map[string]interface{})
+	}
+
+	// Build canonical structure for hashing
+	canonical := map[string]interface{}{
+		"status":        state.Status,
+		"violations":    extractAndSortViolations(result),
+		"waivers":       extractAndSortWaivers(result),
+		"sbomPresent":   result["sbomPresent"],
+		"attestations":  result["attestations"],
+	}
+
+	// Marshal with sorted keys (json.Marshal guarantees map key ordering)
+	data, err := json.Marshal(canonical)
+	if err != nil {
+		return "", err
+	}
+
+	// Compute SHA256
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:]), nil
+}
+
+// extractAndSortViolations extracts violations and sorts them canonically
+func extractAndSortViolations(result map[string]interface{}) []map[string]interface{} {
+	violations := []map[string]interface{}{}
+
+	if v, ok := result["violations"].([]interface{}); ok {
+		for _, item := range v {
+			if violation, ok := item.(map[string]interface{}); ok {
+				violations = append(violations, violation)
+			}
+		}
+	}
+
+	// Sort by rule, then severity for deterministic ordering
+	sort.Slice(violations, func(i, j int) bool {
+		ruleI, _ := violations[i]["rule"].(string)
+		ruleJ, _ := violations[j]["rule"].(string)
+		if ruleI != ruleJ {
+			return ruleI < ruleJ
+		}
+		sevI, _ := violations[i]["severity"].(string)
+		sevJ, _ := violations[j]["severity"].(string)
+		return sevI < sevJ
+	})
+
+	return violations
+}
+
+// extractAndSortWaivers extracts waivers and sorts them canonically
+func extractAndSortWaivers(result map[string]interface{}) []map[string]interface{} {
+	waivers := []map[string]interface{}{}
+
+	if policyResult, ok := result["policyResult"].(map[string]interface{}); ok {
+		if w, ok := policyResult["waivers"].([]interface{}); ok {
+			for _, item := range w {
+				if waiver, ok := item.(map[string]interface{}); ok {
+					waivers = append(waivers, waiver)
+				}
+			}
+		}
+	}
+
+	// Sort by ruleId for deterministic ordering
+	sort.Slice(waivers, func(i, j int) bool {
+		ruleI, _ := waivers[i]["ruleId"].(string)
+		ruleJ, _ := waivers[j]["ruleId"].(string)
+		return ruleI < ruleJ
+	})
+
+	return waivers
+}
+
+// getSBOMRef returns the SBOM reference if available
+func getSBOMRef(cfg *config.Config) string {
+	sbomDir := filepath.Join(".acc", "sbom")
+	sbomFile := filepath.Join(sbomDir, fmt.Sprintf("%s.%s.json", cfg.Project.Name, cfg.SBOM.Format))
+
+	if _, err := os.Stat(sbomFile); err == nil {
+		return sbomFile
+	}
+
+	return ""
+}
+
+// determineOutputPath determines where to write the attestation
+func determineOutputPath(imageRef, digest string) (string, error) {
+	// Sanitize imageRef for use as directory name
+	sanitized := sanitizeRef(imageRef)
+
+	// Use digest if available, otherwise sanitized ref
+	dirName := sanitized
+	if digest != "" {
+		dirName = digest[:12] // Use first 12 chars of digest
+	}
+
+	// Create directory structure
+	attestDir := filepath.Join(".acc", "attestations", dirName)
+	if err := os.MkdirAll(attestDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create attestation directory: %w", err)
+	}
+
+	// Generate filename with timestamp
+	timestamp := time.Now().UTC().Format("20060102-150405")
+	filename := fmt.Sprintf("%s-attestation.json", timestamp)
+
+	return filepath.Join(attestDir, filename), nil
+}
+
+// sanitizeRef sanitizes an image reference for use as a directory name
+func sanitizeRef(ref string) string {
+	// Remove registry prefix
+	parts := strings.Split(ref, "/")
+	name := parts[len(parts)-1]
+
+	// Remove tag (split on : and take first part)
+	name = strings.Split(name, ":")[0]
+
+	// Replace any invalid chars (including @ and .)
+	reg := regexp.MustCompile(`[^a-zA-Z0-9\-_]`)
+	return reg.ReplaceAllString(name, "_")
+}
+
+// writeAttestation writes the attestation to a file
+func writeAttestation(path string, attestation *Attestation) error {
+	// Marshal with deterministic ordering
+	data, err := json.MarshalIndent(attestation, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal attestation: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write attestation: %w", err)
+	}
+
+	return nil
+}
+
+// updateLastAttestationPointer updates the last_attestation.json pointer
+func updateLastAttestationPointer(attestation *Attestation, path string) error {
+	stateDir := filepath.Join(".acc", "state")
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		return err
+	}
+
+	pointer := map[string]interface{}{
+		"attestationPath": path,
+		"timestamp":       attestation.Timestamp,
+		"imageRef":        attestation.Subject.ImageRef,
+		"imageDigest":     attestation.Subject.ImageDigest,
+		"status":          attestation.Evidence.VerificationStatus,
+	}
+
+	data, err := json.MarshalIndent(pointer, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	pointerFile := filepath.Join(stateDir, "last_attestation.json")
+	return os.WriteFile(pointerFile, data, 0644)
+}
+
 // resolveDigest attempts to resolve the digest for an image reference
 func resolveDigest(imageRef string) (string, error) {
-	// Try different tools to get the digest
 	tools := []struct {
 		name string
 		args []string
@@ -153,51 +390,6 @@ func resolveDigest(imageRef string) (string, error) {
 	}
 
 	return "", fmt.Errorf("could not resolve digest")
-}
-
-// getBuildMetadata gathers build metadata from environment
-func getBuildMetadata() BuildMetadata {
-	metadata := BuildMetadata{
-		BuildTime: time.Now().UTC().Format(time.RFC3339),
-		Env:       make(map[string]string),
-	}
-
-	// Detect build tool
-	tools := []string{"docker", "podman", "buildah", "nerdctl"}
-	for _, tool := range tools {
-		if _, err := exec.LookPath(tool); err == nil {
-			metadata.BuildTool = tool
-			break
-		}
-	}
-
-	// Get builder info (hostname)
-	if hostname, err := os.Hostname(); err == nil {
-		metadata.Builder = hostname
-	}
-
-	// Add safe environment variables (no secrets)
-	safeEnvVars := []string{"USER", "CI", "GITHUB_ACTIONS", "GITLAB_CI"}
-	for _, key := range safeEnvVars {
-		if val := os.Getenv(key); val != "" {
-			metadata.Env[key] = val
-		}
-	}
-
-	return metadata
-}
-
-// loadPolicyHash loads the policy hash from last verify results
-func loadPolicyHash() string {
-	stateFile := filepath.Join(".acc", "state", "last_verify.json")
-	data, err := os.ReadFile(stateFile)
-	if err != nil {
-		return ""
-	}
-
-	// Hash the verify results to create a policy decision hash
-	hash := sha256.Sum256(data)
-	return hex.EncodeToString(hash[:])
 }
 
 // FormatJSON formats attestation result as JSON

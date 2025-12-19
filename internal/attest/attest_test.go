@@ -9,7 +9,131 @@ import (
 	"github.com/cloudcwfranck/acc/internal/config"
 )
 
-func TestAttest(t *testing.T) {
+func TestComputeCanonicalHash(t *testing.T) {
+	// Test that hash is stable across runs with same data
+	state := &VerifyState{
+		ImageRef:  "test:latest",
+		Status:    "fail",
+		Timestamp: "2025-01-01T00:00:00Z",
+		Result: map[string]interface{}{
+			"status":      "fail",
+			"sbomPresent": false,
+			"violations": []interface{}{
+				map[string]interface{}{
+					"rule":     "sbom-required",
+					"severity": "critical",
+					"result":   "fail",
+					"message":  "SBOM is required but not found",
+				},
+			},
+			"attestations": []interface{}{},
+		},
+	}
+
+	// Compute hash multiple times
+	hash1, err := computeCanonicalHash(state)
+	if err != nil {
+		t.Fatalf("computeCanonicalHash failed: %v", err)
+	}
+
+	hash2, err := computeCanonicalHash(state)
+	if err != nil {
+		t.Fatalf("computeCanonicalHash failed: %v", err)
+	}
+
+	// Hashes should be identical
+	if hash1 != hash2 {
+		t.Errorf("hash not stable: got %s and %s", hash1, hash2)
+	}
+
+	// Hash should be 64 hex chars (SHA256)
+	if len(hash1) != 64 {
+		t.Errorf("expected hash length 64, got %d", len(hash1))
+	}
+}
+
+func TestCanonicalHashOrdering(t *testing.T) {
+	// Test that violations are sorted for deterministic hashing
+	state1 := &VerifyState{
+		ImageRef: "test:latest",
+		Status:   "fail",
+		Result: map[string]interface{}{
+			"violations": []interface{}{
+				map[string]interface{}{"rule": "rule-b", "severity": "high"},
+				map[string]interface{}{"rule": "rule-a", "severity": "critical"},
+			},
+		},
+	}
+
+	state2 := &VerifyState{
+		ImageRef: "test:latest",
+		Status:   "fail",
+		Result: map[string]interface{}{
+			"violations": []interface{}{
+				map[string]interface{}{"rule": "rule-a", "severity": "critical"},
+				map[string]interface{}{"rule": "rule-b", "severity": "high"},
+			},
+		},
+	}
+
+	hash1, _ := computeCanonicalHash(state1)
+	hash2, _ := computeCanonicalHash(state2)
+
+	// Hashes should be identical despite different input order
+	if hash1 != hash2 {
+		t.Errorf("canonical ordering failed: different hashes for same violations in different order")
+	}
+}
+
+func TestExtractAndSortViolations(t *testing.T) {
+	result := map[string]interface{}{
+		"violations": []interface{}{
+			map[string]interface{}{"rule": "rule-c", "severity": "low"},
+			map[string]interface{}{"rule": "rule-a", "severity": "high"},
+			map[string]interface{}{"rule": "rule-b", "severity": "critical"},
+		},
+	}
+
+	violations := extractAndSortViolations(result)
+
+	if len(violations) != 3 {
+		t.Fatalf("expected 3 violations, got %d", len(violations))
+	}
+
+	// Check sorted by rule name
+	if violations[0]["rule"] != "rule-a" {
+		t.Errorf("expected first rule to be 'rule-a', got %v", violations[0]["rule"])
+	}
+	if violations[1]["rule"] != "rule-b" {
+		t.Errorf("expected second rule to be 'rule-b', got %v", violations[1]["rule"])
+	}
+	if violations[2]["rule"] != "rule-c" {
+		t.Errorf("expected third rule to be 'rule-c', got %v", violations[2]["rule"])
+	}
+}
+
+func TestSanitizeRef(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"myapp:latest", "myapp"},
+		{"registry.io/myapp:v1.0", "myapp"},
+		{"test/app:tag", "app"},
+		{"my-app:latest", "my-app"},
+		{"my.app:latest", "my_app"},
+		{"my@app:latest", "my_app"},
+	}
+
+	for _, tt := range tests {
+		result := sanitizeRef(tt.input)
+		if result != tt.expected {
+			t.Errorf("sanitizeRef(%s) = %s, want %s", tt.input, result, tt.expected)
+		}
+	}
+}
+
+func TestAttestWithoutVerifyState(t *testing.T) {
 	// Create a temporary directory for testing
 	tmpDir, err := os.MkdirTemp("", "acc-attest-test-*")
 	if err != nil {
@@ -27,155 +151,20 @@ func TestAttest(t *testing.T) {
 	// Create config
 	cfg := config.DefaultConfig("test-project")
 
-	// Test attest
-	result, err := Attest(cfg, "test:latest", true)
-	if err != nil {
-		t.Fatalf("Attest() failed: %v", err)
+	// Try to attest without verify state (should fail)
+	_, err = Attest(cfg, "test:latest", "v0.1", "abc123", true)
+	if err == nil {
+		t.Error("expected error when verify state missing, got nil")
 	}
 
-	// Verify result
-	if result.AttestationPath == "" {
-		t.Error("expected attestation path to be set")
-	}
-
-	if result.Attestation.ImageRef != "test:latest" {
-		t.Errorf("expected imageRef 'test:latest', got '%s'", result.Attestation.ImageRef)
-	}
-
-	if result.Attestation.SchemaVersion != "v0.1" {
-		t.Errorf("expected schemaVersion 'v0.1', got '%s'", result.Attestation.SchemaVersion)
-	}
-
-	if result.Attestation.Type != "acc.build.v0" {
-		t.Errorf("expected type 'acc.build.v0', got '%s'", result.Attestation.Type)
-	}
-
-	// Verify file was created
-	if _, err := os.Stat(result.AttestationPath); os.IsNotExist(err) {
-		t.Error("attestation file was not created")
-	}
-
-	// Verify file contents
-	data, err := os.ReadFile(result.AttestationPath)
-	if err != nil {
-		t.Fatalf("failed to read attestation file: %v", err)
-	}
-
-	var attestation Attestation
-	if err := json.Unmarshal(data, &attestation); err != nil {
-		t.Fatalf("failed to unmarshal attestation: %v", err)
-	}
-
-	if attestation.ImageRef != "test:latest" {
-		t.Errorf("attestation file has wrong imageRef: %s", attestation.ImageRef)
-	}
-
-	// Verify metadata
-	if attestation.Metadata["project"] != "test-project" {
-		t.Errorf("expected project 'test-project', got '%s'", attestation.Metadata["project"])
-	}
-
-	if attestation.Metadata["policyMode"] != "enforce" {
-		t.Errorf("expected policyMode 'enforce', got '%s'", attestation.Metadata["policyMode"])
+	if !contains(err.Error(), "verification state not found") {
+		t.Errorf("expected 'verification state not found' error, got: %v", err)
 	}
 }
 
-func TestGetBuildMetadata(t *testing.T) {
-	metadata := getBuildMetadata()
-
-	if metadata.BuildTime == "" {
-		t.Error("expected buildTime to be set")
-	}
-
-	// BuildTool may or may not be set depending on environment
-	// Just verify the function doesn't panic
-
-	// Verify env map is initialized
-	if metadata.Env == nil {
-		t.Error("expected env map to be initialized")
-	}
-}
-
-func TestLoadPolicyHash(t *testing.T) {
+func TestAttestWithVerifyState(t *testing.T) {
 	// Create a temporary directory for testing
-	tmpDir, err := os.MkdirTemp("", "acc-policy-hash-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	// Change to temp directory
-	originalDir, _ := os.Getwd()
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("failed to change to temp dir: %v", err)
-	}
-	defer os.Chdir(originalDir)
-
-	// Test with no state file
-	hash := loadPolicyHash()
-	if hash != "" {
-		t.Error("expected empty hash when no state file exists")
-	}
-
-	// Create state directory and file
-	stateDir := filepath.Join(".acc", "state")
-	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		t.Fatalf("failed to create state dir: %v", err)
-	}
-
-	testData := []byte(`{"status":"pass","timestamp":"2025-01-01T00:00:00Z"}`)
-	stateFile := filepath.Join(stateDir, "last_verify.json")
-	if err := os.WriteFile(stateFile, testData, 0644); err != nil {
-		t.Fatalf("failed to write state file: %v", err)
-	}
-
-	// Test with state file
-	hash = loadPolicyHash()
-	if hash == "" {
-		t.Error("expected non-empty hash when state file exists")
-	}
-
-	// Verify hash is sha256 (64 hex chars)
-	if len(hash) != 64 {
-		t.Errorf("expected hash length 64, got %d", len(hash))
-	}
-}
-
-func TestFormatJSON(t *testing.T) {
-	result := &AttestResult{
-		AttestationPath: ".acc/attestations/test.json",
-		Attestation: Attestation{
-			SchemaVersion: "v0.1",
-			Type:          "acc.build.v0",
-			ImageRef:      "test:latest",
-			Timestamp:     "2025-01-01T00:00:00Z",
-			BuildMetadata: BuildMetadata{
-				BuildTool: "docker",
-				BuildTime: "2025-01-01T00:00:00Z",
-			},
-			Metadata: map[string]string{"project": "test"},
-		},
-	}
-
-	jsonStr := result.FormatJSON()
-	if jsonStr == "" {
-		t.Error("expected non-empty JSON string")
-	}
-
-	// Verify it's valid JSON
-	var decoded AttestResult
-	if err := json.Unmarshal([]byte(jsonStr), &decoded); err != nil {
-		t.Errorf("failed to decode JSON: %v", err)
-	}
-
-	if decoded.Attestation.ImageRef != "test:latest" {
-		t.Errorf("expected imageRef 'test:latest', got '%s'", decoded.Attestation.ImageRef)
-	}
-}
-
-func TestAttestationDeterministic(t *testing.T) {
-	// Create a temporary directory for testing
-	tmpDir, err := os.MkdirTemp("", "acc-determ-test-*")
+	tmpDir, err := os.MkdirTemp("", "acc-attest-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -191,37 +180,174 @@ func TestAttestationDeterministic(t *testing.T) {
 	// Create config
 	cfg := config.DefaultConfig("test-project")
 
-	// Create attestation
-	result, err := Attest(cfg, "test:v1", true)
+	// Create verify state
+	stateDir := filepath.Join(".acc", "state")
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		t.Fatalf("failed to create state dir: %v", err)
+	}
+
+	verifyState := VerifyState{
+		ImageRef:  "test:latest",
+		Status:    "pass",
+		Timestamp: "2025-01-01T00:00:00Z",
+		Result: map[string]interface{}{
+			"status":       "pass",
+			"sbomPresent":  true,
+			"violations":   []interface{}{},
+			"attestations": []interface{}{},
+		},
+	}
+
+	stateData, _ := json.Marshal(verifyState)
+	stateFile := filepath.Join(stateDir, "last_verify.json")
+	if err := os.WriteFile(stateFile, stateData, 0644); err != nil {
+		t.Fatalf("failed to write state file: %v", err)
+	}
+
+	// Attest
+	result, err := Attest(cfg, "test:latest", "v0.1.0", "abc123", true)
 	if err != nil {
-		t.Fatalf("Attest() failed: %v", err)
+		t.Fatalf("Attest failed: %v", err)
 	}
 
-	// Read the file
-	data, err := os.ReadFile(result.AttestationPath)
+	// Verify result
+	if result.OutputPath == "" {
+		t.Error("expected output path to be set")
+	}
+
+	if result.Attestation.Command != "attest" {
+		t.Errorf("expected command 'attest', got '%s'", result.Attestation.Command)
+	}
+
+	if result.Attestation.Subject.ImageRef != "test:latest" {
+		t.Errorf("expected imageRef 'test:latest', got '%s'", result.Attestation.Subject.ImageRef)
+	}
+
+	if result.Attestation.Evidence.VerificationStatus != "pass" {
+		t.Errorf("expected verification status 'pass', got '%s'", result.Attestation.Evidence.VerificationStatus)
+	}
+
+	if result.Attestation.Evidence.VerificationResultsHash == "" {
+		t.Error("expected verification results hash to be set")
+	}
+
+	if result.Attestation.Metadata.Tool != "acc" {
+		t.Errorf("expected tool 'acc', got '%s'", result.Attestation.Metadata.Tool)
+	}
+
+	if result.Attestation.Metadata.ToolVersion != "v0.1.0" {
+		t.Errorf("expected tool version 'v0.1.0', got '%s'", result.Attestation.Metadata.ToolVersion)
+	}
+
+	// Verify file was created
+	if _, err := os.Stat(result.OutputPath); os.IsNotExist(err) {
+		t.Error("attestation file was not created")
+	}
+
+	// Verify last_attestation.json pointer was created
+	pointerFile := filepath.Join(stateDir, "last_attestation.json")
+	if _, err := os.Stat(pointerFile); os.IsNotExist(err) {
+		t.Error("last_attestation.json pointer was not created")
+	}
+
+	// Read and verify pointer
+	pointerData, _ := os.ReadFile(pointerFile)
+	var pointer map[string]interface{}
+	json.Unmarshal(pointerData, &pointer)
+
+	if pointer["imageRef"] != "test:latest" {
+		t.Errorf("pointer imageRef mismatch")
+	}
+}
+
+func TestAttestImageMismatch(t *testing.T) {
+	// Create a temporary directory for testing
+	tmpDir, err := os.MkdirTemp("", "acc-attest-mismatch-test-*")
 	if err != nil {
-		t.Fatalf("failed to read attestation: %v", err)
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Change to temp directory
+	originalDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp dir: %v", err)
+	}
+	defer os.Chdir(originalDir)
+
+	// Create config
+	cfg := config.DefaultConfig("test-project")
+
+	// Create verify state for different image
+	stateDir := filepath.Join(".acc", "state")
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		t.Fatalf("failed to create state dir: %v", err)
 	}
 
-	// Verify JSON is well-formed and can be parsed
-	var attestation Attestation
-	if err := json.Unmarshal(data, &attestation); err != nil {
-		t.Fatalf("failed to unmarshal attestation: %v", err)
+	verifyState := VerifyState{
+		ImageRef:  "other:latest",
+		Status:    "pass",
+		Timestamp: "2025-01-01T00:00:00Z",
+		Result:    map[string]interface{}{},
 	}
 
-	// Verify re-marshaling produces valid JSON
-	remarshaled, err := json.Marshal(attestation)
-	if err != nil {
-		t.Fatalf("failed to re-marshal attestation: %v", err)
+	stateData, _ := json.Marshal(verifyState)
+	stateFile := filepath.Join(stateDir, "last_verify.json")
+	if err := os.WriteFile(stateFile, stateData, 0644); err != nil {
+		t.Fatalf("failed to write state file: %v", err)
 	}
 
-	var remarAttestation Attestation
-	if err := json.Unmarshal(remarshaled, &remarAttestation); err != nil {
-		t.Fatalf("failed to unmarshal re-marshaled attestation: %v", err)
+	// Try to attest different image (should fail)
+	_, err = Attest(cfg, "test:latest", "v0.1", "abc123", true)
+	if err == nil {
+		t.Error("expected error for image mismatch, got nil")
 	}
 
-	// Verify key fields preserved
-	if remarAttestation.ImageRef != attestation.ImageRef {
-		t.Error("imageRef not preserved through marshal/unmarshal cycle")
+	if !contains(err.Error(), "image mismatch") {
+		t.Errorf("expected 'image mismatch' error, got: %v", err)
 	}
+}
+
+func TestFormatJSON(t *testing.T) {
+	result := &AttestResult{
+		OutputPath: ".acc/attestations/test/attestation.json",
+		Attestation: Attestation{
+			SchemaVersion: "v0.1",
+			Command:       "attest",
+			Timestamp:     "2025-01-01T00:00:00Z",
+			Subject: Subject{
+				ImageRef:    "test:latest",
+				ImageDigest: "abc123",
+			},
+			Evidence: Evidence{
+				PolicyPack:              ".acc/policy",
+				PolicyMode:              "enforce",
+				VerificationStatus:      "pass",
+				VerificationResultsHash: "def456",
+			},
+			Metadata: AttestationMeta{
+				Tool:        "acc",
+				ToolVersion: "v0.1.0",
+			},
+		},
+	}
+
+	jsonStr := result.FormatJSON()
+	if jsonStr == "" {
+		t.Error("expected non-empty JSON string")
+	}
+
+	// Verify it's valid JSON
+	var decoded AttestResult
+	if err := json.Unmarshal([]byte(jsonStr), &decoded); err != nil {
+		t.Errorf("failed to decode JSON: %v", err)
+	}
+
+	if decoded.Attestation.Subject.ImageRef != "test:latest" {
+		t.Errorf("expected imageRef 'test:latest', got '%s'", decoded.Attestation.Subject.ImageRef)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr)))
 }
