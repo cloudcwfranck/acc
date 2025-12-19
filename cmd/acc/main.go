@@ -9,6 +9,7 @@ import (
 	"github.com/cloudcwfranck/acc/internal/build"
 	"github.com/cloudcwfranck/acc/internal/config"
 	"github.com/cloudcwfranck/acc/internal/inspect"
+	"github.com/cloudcwfranck/acc/internal/policy"
 	"github.com/cloudcwfranck/acc/internal/promote"
 	"github.com/cloudcwfranck/acc/internal/runtime"
 	"github.com/cloudcwfranck/acc/internal/ui"
@@ -298,14 +299,27 @@ func NewPromoteCmd() *cobra.Command {
 }
 
 func NewPolicyCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "policy",
 		Short: "Manage and test policies",
 		Long:  "List policies, test policies, and explain last decision",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented yet")
+			return cmd.Help()
 		},
 	}
+
+	// Add explain subcommand
+	explainCmd := &cobra.Command{
+		Use:   "explain [last]",
+		Short: "Explain last verification decision",
+		Long:  "Display developer-friendly explanation of the last verification decision",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return policy.Explain(jsonFlag)
+		},
+	}
+
+	cmd.AddCommand(explainCmd)
+	return cmd
 }
 
 func NewAttestCmd() *cobra.Command {
