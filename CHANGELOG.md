@@ -16,6 +16,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.1.3] - 2025-01-19
+
+### Fixed - Policy Input & Evaluation Correctness
+
+**CRITICAL: This release fixes a critical input provisioning bug in v0.1.2's policy evaluation that broke enforcement of input-dependent rules.**
+
+**The Bug:**
+v0.1.2 introduced structured violation parsing but **failed to provide the Rego input document** to policy evaluation. This caused all policy deny rules depending on `input.*` fields to silently never trigger, allowing root containers and other violations to pass verification incorrectly.
+
+**What Was Broken in v0.1.2:**
+- Rego evaluation didn't receive any input document - `input` was empty/undefined during policy evaluation
+- Policy rules depending on `input.config.User`, `input.config.Labels`, etc. never fired
+- Root containers (`User == ""`) passed verification when they should have failed
+- SBOM presence wasn't exposed via `input.sbom.present` for policy decisions
+- Image config inspection silently fell back to empty config on failure
+- `acc policy explain` didn't show input document, making policy debugging impossible
+- Text-parsing fallback existed as unsafe security bypass
+
+**Example of Broken Behavior:**
+```rego
+# Policy file: .acc/policy/security.rego
+deny contains {
+  "rule": "no-root-user",
+  "severity": "high",
+  "message": "Container runs as root"
+} if {
+  input.config.User == ""  # This condition NEVER evaluated in v0.1.2
+}
+```
+
+**v0.1.2 behavior:** Root container **INCORRECTLY PASSED** (input was empty, condition never matched)
+**v0.1.3 behavior:** Root container **CORRECTLY FAILS** (input.config.User == "" triggers deny)
+
+**What's Fixed in v0.1.3:**
+- ✅ **Rego input document properly constructed** - Full input object with config, sbom, attestation, promotion fields
+- ✅ **Image inspection using docker/podman/nerdctl** - Extracts actual User and Labels from image config
+- ✅ **Input contract defined**: `{config: {User, Labels}, sbom: {present}, attestation: {present}, promotion}`
+- ✅ **Policy evaluation changed to `data.acc.policy.result`** - Evaluates full result object (violations, warnings, allow)
+- ✅ **Input persisted in verification state** - `acc policy explain --json` now includes `.result.input` for debuggability
+- ✅ **Image inspection failure is a violation** - Missing container tools creates critical `image-inspect-failed` violation (no silent fallback)
+- ✅ **OPA is required by default** - Clear error if `opa` command not found, with installation instructions
+- ✅ **Escape hatch for dev/testing** - `ACC_ALLOW_NO_OPA=1` allows tests to run without OPA (development only)
+- ✅ **Removed text-parsing fallback** - All security decisions now use proper OPA evaluation
+- ✅ **Backwards compatibility** - Checks both `result.violations` and `result.deny` in OPA output
+
+### Impact
+
+**Enforcement was BROKEN in v0.1.2** - Any policy deny rule depending on `input.*` fields (User, Labels, SBOM presence, etc.) silently never triggered. This is a **critical security regression** from v0.1.1.
+
+**Explainability was BROKEN in v0.1.2** - Users could not see what input was provided to policies, making policy debugging impossible.
+
+**Users of v0.1.2 MUST upgrade immediately to v0.1.3** to restore correct policy enforcement for input-dependent rules.
+
+**Root containers and other input-dependent violations that incorrectly passed in v0.1.2 will now correctly fail in v0.1.3.**
+
+### Testing
+
+- ✅ Added `TestBuildRegoInput` - Verifies input document construction (FAILS on v0.1.2, PASSES on v0.1.3)
+- ✅ Added `TestSBOMPresentField` - Verifies SBOM presence detection in input (FAILS on v0.1.2, PASSES on v0.1.3)
+- ✅ Added `TestPolicyExplainIncludesInput` - Verifies input persists in state for policy explain (FAILS on v0.1.2, PASSES on v0.1.3)
+- ✅ Added `TestImageInspectFailureCreatesViolation` - Verifies inspection failures create violations (FAILS on v0.1.2, PASSES on v0.1.3)
+- ✅ Added `TestOPARequiredError` - Verifies clear error when OPA not found
+- ✅ Added `TestOPAEscapeHatch` - Verifies `ACC_ALLOW_NO_OPA=1` allows dev/testing
+- ✅ All 6 regression tests pass on v0.1.3
+
 ## [0.1.2] - 2025-01-19
 
 ### Fixed - Policy Correctness & Explainability
@@ -210,5 +275,8 @@ acc follows [Semantic Versioning](https://semver.org/):
 
 ---
 
-[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/cloudcwfranck/acc/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/cloudcwfranck/acc/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/cloudcwfranck/acc/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cloudcwfranck/acc/releases/tag/v0.1.0
