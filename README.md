@@ -135,11 +135,11 @@ acc run myimage:latest --cap-add NET_ADMIN
 | `build` | Build OCI image with SBOM generation |
 | `verify` | Verify SBOM, policy compliance, and attestations |
 | `run` | Verify and run workload locally with security defaults |
+| `inspect` | Inspect artifact trust summary with verification status |
+| `attest` | Create attestation for artifact with build metadata |
+| `promote` | Re-verify and promote workload to environment |
+| `policy explain` | Explain last verification decision |
 | `push` | Verify and push verified artifacts (coming soon) |
-| `promote` | Re-verify and promote workload (coming soon) |
-| `policy` | Manage and test policies (coming soon) |
-| `attest` | Attach attestations to artifacts (coming soon) |
-| `inspect` | Inspect artifact trust summary (coming soon) |
 | `config` | Get or set configuration values (coming soon) |
 | `login` | Authenticate to registries (coming soon) |
 | `version` | Print version information |
@@ -236,6 +236,91 @@ acc build --json --tag myapp:latest
 # Verify with JSON output
 acc verify --json
 ```
+
+### Inspect artifact trust
+
+```bash
+# Inspect an image to see trust summary
+acc inspect myapp:latest
+
+# View trust summary with JSON output
+acc inspect myapp:latest --json
+
+# Shows:
+# - Image digest and reference
+# - SBOM presence and location
+# - Attestations found
+# - Last verification status
+# - Policy mode and waivers
+```
+
+### Create attestations
+
+```bash
+# Create attestation for an image
+acc attest myapp:latest
+
+# Attestation includes:
+# - Image digest and reference
+# - Build metadata (tool, time, builder)
+# - Hash of last policy decision
+# - Project metadata
+
+# View attestation in JSON
+acc attest myapp:latest --json
+```
+
+### Promote workloads to environments
+
+```bash
+# Promote to production (requires verification to pass)
+acc promote myapp:dev --to prod
+
+# Promotion:
+# 1. Re-verifies with prod-specific policy
+# 2. Blocks if verification fails
+# 3. Re-tags image without rebuild
+# 4. Verifies digest unchanged
+```
+
+### Environment-specific configuration
+
+Add to `acc.yaml`:
+
+```yaml
+environments:
+  prod:
+    policy:
+      mode: enforce
+    registry:
+      default: prod.registry.io
+  staging:
+    policy:
+      mode: warn
+    registry:
+      default: staging.registry.io
+```
+
+### Explain policy decisions
+
+```bash
+# View explanation of last verification
+acc policy explain
+
+# Shows:
+# - Image and timestamp
+# - Pass/fail status
+# - Violations with remediation
+# - Warnings
+# - Policy decision details
+
+# JSON output for automation
+acc policy explain --json
+```
+
+### Testing policy failures
+
+See `examples/intentional-failure/` for a Dockerfile that demonstrates verification gating by intentionally violating security policies.
 
 ## What acc Does NOT Do
 
