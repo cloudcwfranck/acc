@@ -14,9 +14,9 @@ import (
 
 // BuildResult represents the output of a build operation
 type BuildResult struct {
-	ImageDigest string   `json:"imageDigest"`
-	ImageTag    string   `json:"imageTag"`
-	SBOMPath    string   `json:"sbomPath"`
+	ImageDigest  string   `json:"imageDigest"`
+	ImageTag     string   `json:"imageTag"`
+	SBOMPath     string   `json:"sbomPath"`
 	Attestations []string `json:"attestations"`
 }
 

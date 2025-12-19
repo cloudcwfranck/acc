@@ -13,11 +13,11 @@ import (
 
 // RunOptions represents options for running a workload
 type RunOptions struct {
-	ImageRef    string
-	Args        []string
-	NetworkMode string
-	ReadOnly    bool
-	User        string
+	ImageRef     string
+	Args         []string
+	NetworkMode  string
+	ReadOnly     bool
+	User         string
 	Capabilities []string
 }
 

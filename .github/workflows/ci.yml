@@ -1,4 +1,4 @@
-name: CI Smoke Test
+name: CI
 
 on:
   push:
@@ -8,18 +8,30 @@ on:
 
 jobs:
   test:
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for changelog check
 
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
         go-version: '1.21'
 
+    - name: Check formatting
+      run: |
+        if [ -n "$(gofmt -l .)" ]; then
+          echo "Go code is not formatted:"
+          gofmt -d .
+          exit 1
+        fi
+
     - name: Run tests
-      run: go test ./...
+      run: go test -v ./...
 
     - name: Build acc
       run: go build -o acc ./cmd/acc
@@ -27,7 +39,7 @@ jobs:
     - name: Test acc version
       run: ./acc version
 
-    - name: Test acc init
+    - name: Smoke test - acc init
       run: |
         mkdir -p test-project
         cd test-project
@@ -35,7 +47,7 @@ jobs:
         cat acc.yaml
         ls -la .acc/policy/
 
-    - name: Test verification gating with intentional failure
+    - name: Smoke test - verification gating
       run: |
         cd test-project
         # Create a Dockerfile that violates policy (runs as root)
@@ -52,7 +64,7 @@ jobs:
         # Show policy explain output
         ../acc policy explain || echo "No history yet"
 
-    - name: Test acc inspect
+    - name: Smoke test - acc inspect
       run: |
         cd test-project
         ../acc inspect alpine:latest || echo "Inspect completed (image may not exist)"
@@ -64,8 +76,33 @@ jobs:
         ./acc build --help
         ./acc verify --help
         ./acc run --help
+        ./acc push --help
         ./acc promote --help
         ./acc attest --help
         ./acc inspect --help
         ./acc policy --help
         ./acc policy explain --help
+
+  changelog:
+    name: Changelog Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Check if CHANGELOG.md was updated
+      run: |
+        # Check if CHANGELOG.md has been modified in this PR
+        if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "CHANGELOG.md"; then
+          echo "✅ CHANGELOG.md has been updated"
+        else
+          echo "❌ CHANGELOG.md has not been updated"
+          echo ""
+          echo "Please add an entry to CHANGELOG.md under the [Unreleased] section."
+          echo "See docs/releasing.md for changelog guidelines."
+          exit 1
+        fi

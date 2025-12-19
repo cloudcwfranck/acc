@@ -18,11 +18,11 @@ const (
 
 var (
 	// Color styles
-	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))  // Green
-	warningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))  // Yellow
-	failureStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))  // Red
-	infoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))  // Blue
-	trustStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))  // Cyan
+	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("2")) // Green
+	warningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // Yellow
+	failureStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1")) // Red
+	infoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4")) // Blue
+	trustStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // Cyan
 	boldStyle    = lipgloss.NewStyle().Bold(true)
 
 	// Global UI settings

@@ -19,8 +19,8 @@ func TestVerifyJSONGolden(t *testing.T) {
 			name:       "pass",
 			goldenFile: "testdata/golden/verify/pass.json",
 			result: &VerifyResult{
-				Status:       "pass",
-				SBOMPresent:  true,
+				Status:      "pass",
+				SBOMPresent: true,
 				PolicyResult: &PolicyResult{
 					Allow:      true,
 					Violations: []PolicyViolation{},

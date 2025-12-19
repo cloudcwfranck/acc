@@ -19,12 +19,12 @@ import (
 
 // Attestation represents the v0 attestation format
 type Attestation struct {
-	SchemaVersion string            `json:"schemaVersion"`
-	Command       string            `json:"command"`
-	Timestamp     string            `json:"timestamp"`
-	Subject       Subject           `json:"subject"`
-	Evidence      Evidence          `json:"evidence"`
-	Metadata      AttestationMeta   `json:"metadata"`
+	SchemaVersion string          `json:"schemaVersion"`
+	Command       string          `json:"command"`
+	Timestamp     string          `json:"timestamp"`
+	Subject       Subject         `json:"subject"`
+	Evidence      Evidence        `json:"evidence"`
+	Metadata      AttestationMeta `json:"metadata"`
 }
 
 // Subject identifies what is being attested
@@ -35,11 +35,11 @@ type Subject struct {
 
 // Evidence contains verification evidence
 type Evidence struct {
-	SBOMRef                   string `json:"sbomRef,omitempty"`
-	PolicyPack                string `json:"policyPack"`
-	PolicyMode                string `json:"policyMode"`
-	VerificationStatus        string `json:"verificationStatus"`
-	VerificationResultsHash   string `json:"verificationResultsHash"`
+	SBOMRef                 string `json:"sbomRef,omitempty"`
+	PolicyPack              string `json:"policyPack"`
+	PolicyMode              string `json:"policyMode"`
+	VerificationStatus      string `json:"verificationStatus"`
+	VerificationResultsHash string `json:"verificationResultsHash"`
 }
 
 // AttestationMeta contains tool metadata
@@ -206,11 +206,11 @@ func computeCanonicalHash(state *VerifyState) (string, error) {
 
 	// Build canonical structure for hashing
 	canonical := map[string]interface{}{
-		"status":        state.Status,
-		"violations":    extractAndSortViolations(result),
-		"waivers":       extractAndSortWaivers(result),
-		"sbomPresent":   result["sbomPresent"],
-		"attestations":  result["attestations"],
+		"status":       state.Status,
+		"violations":   extractAndSortViolations(result),
+		"waivers":      extractAndSortWaivers(result),
+		"sbomPresent":  result["sbomPresent"],
+		"attestations": result["attestations"],
 	}
 
 	// Marshal with sorted keys (json.Marshal guarantees map key ordering)

@@ -29,8 +29,65 @@
 
 ### Installation
 
+#### Option 1: Download Pre-built Binaries (Recommended)
+
+Download the latest release from [GitHub Releases](https://github.com/cloudcwfranck/acc/releases):
+
+**Linux (AMD64):**
 ```bash
-# Clone the repository
+# Download the latest release
+VERSION="0.1.0"
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc-${VERSION}-linux-amd64.tar.gz"
+
+# Verify checksum (recommended)
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/checksums.txt"
+sha256sum -c checksums.txt --ignore-missing
+
+# Extract and install
+tar -xzf "acc-${VERSION}-linux-amd64.tar.gz"
+sudo mv acc-linux-amd64 /usr/local/bin/acc
+chmod +x /usr/local/bin/acc
+
+# Verify installation
+acc version
+```
+
+**macOS (Apple Silicon):**
+```bash
+# Download the latest release
+VERSION="0.1.0"
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc-${VERSION}-darwin-arm64.tar.gz"
+
+# Verify checksum (recommended)
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/checksums.txt"
+shasum -a 256 -c checksums.txt --ignore-missing
+
+# Extract and install
+tar -xzf "acc-${VERSION}-darwin-arm64.tar.gz"
+sudo mv acc-darwin-arm64 /usr/local/bin/acc
+chmod +x /usr/local/bin/acc
+
+# Verify installation
+acc version
+```
+
+**macOS (Intel):**
+```bash
+# Use acc-${VERSION}-darwin-amd64.tar.gz instead
+```
+
+**Windows (AMD64):**
+```powershell
+# Download from GitHub Releases
+# Extract acc-0.1.0-windows-amd64.zip
+# Add to PATH or run directly
+.\acc-windows-amd64.exe version
+```
+
+#### Option 2: Build from Source
+
+```bash
+# Prerequisites: Go 1.21+
 git clone https://github.com/cloudcwfranck/acc.git
 cd acc
 
@@ -39,6 +96,9 @@ go build -o acc ./cmd/acc
 
 # Install (optional)
 sudo mv acc /usr/local/bin/
+
+# Verify
+acc version
 ```
 
 ### Basic Usage

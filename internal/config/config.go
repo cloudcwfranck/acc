@@ -10,13 +10,13 @@ import (
 
 // Config represents the acc configuration (AGENTS.md Section 5.3)
 type Config struct {
-	Project      ProjectConfig             `mapstructure:"project"`
-	Build        BuildConfig               `mapstructure:"build"`
-	Registry     RegistryConfig            `mapstructure:"registry"`
-	Policy       PolicyConfig              `mapstructure:"policy"`
-	Signing      SigningConfig             `mapstructure:"signing"`
-	SBOM         SBOMConfig                `mapstructure:"sbom"`
-	Environments map[string]EnvConfig      `mapstructure:"environments"`
+	Project      ProjectConfig        `mapstructure:"project"`
+	Build        BuildConfig          `mapstructure:"build"`
+	Registry     RegistryConfig       `mapstructure:"registry"`
+	Policy       PolicyConfig         `mapstructure:"policy"`
+	Signing      SigningConfig        `mapstructure:"signing"`
+	SBOM         SBOMConfig           `mapstructure:"sbom"`
+	Environments map[string]EnvConfig `mapstructure:"environments"`
 }
 
 // EnvConfig represents environment-specific configuration
