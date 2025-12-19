@@ -344,6 +344,198 @@ func createTestTarGz(path, filename string, content []byte) error {
 	return nil
 }
 
+// TestFindExecutableInDir_StandardName tests finding binary with standard "acc" name
+func TestFindExecutableInDir_StandardName(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "acc-find-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create acc binary with executable permissions
+	binaryName := "acc"
+	if runtime.GOOS == "windows" {
+		binaryName = "acc.exe"
+	}
+	binaryPath := filepath.Join(tmpDir, binaryName)
+	if err := os.WriteFile(binaryPath, []byte("fake binary"), 0755); err != nil {
+		t.Fatalf("failed to create binary: %v", err)
+	}
+
+	found, err := findExecutableInDir(tmpDir)
+	if err != nil {
+		t.Fatalf("findExecutableInDir failed: %v", err)
+	}
+
+	if found != binaryPath {
+		t.Errorf("found = %q, want %q", found, binaryPath)
+	}
+}
+
+// TestFindExecutableInDir_LegacyName tests finding binary with legacy "acc-OS-ARCH" name
+func TestFindExecutableInDir_LegacyName(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "acc-find-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create acc binary with legacy naming
+	binaryName := "acc-linux-amd64"
+	if runtime.GOOS == "windows" {
+		binaryName = "acc-windows-amd64.exe"
+	}
+	binaryPath := filepath.Join(tmpDir, binaryName)
+	if err := os.WriteFile(binaryPath, []byte("fake binary"), 0755); err != nil {
+		t.Fatalf("failed to create binary: %v", err)
+	}
+
+	found, err := findExecutableInDir(tmpDir)
+	if err != nil {
+		t.Fatalf("findExecutableInDir failed: %v", err)
+	}
+
+	if found != binaryPath {
+		t.Errorf("found = %q, want %q", found, binaryPath)
+	}
+}
+
+// TestFindExecutableInDir_MultipleExecutables tests error when multiple executables found
+func TestFindExecutableInDir_MultipleExecutables(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "acc-find-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create two executables
+	binary1 := filepath.Join(tmpDir, "acc")
+	binary2 := filepath.Join(tmpDir, "acc-linux-amd64")
+
+	if runtime.GOOS == "windows" {
+		binary1 = filepath.Join(tmpDir, "acc.exe")
+		binary2 = filepath.Join(tmpDir, "acc-windows-amd64.exe")
+	}
+
+	if err := os.WriteFile(binary1, []byte("fake binary 1"), 0755); err != nil {
+		t.Fatalf("failed to create binary1: %v", err)
+	}
+	if err := os.WriteFile(binary2, []byte("fake binary 2"), 0755); err != nil {
+		t.Fatalf("failed to create binary2: %v", err)
+	}
+
+	_, err = findExecutableInDir(tmpDir)
+	if err == nil {
+		t.Error("Expected error for multiple executables, got nil")
+	}
+
+	if !containsStr(err.Error(), "multiple acc executables found") {
+		t.Errorf("Expected 'multiple acc executables found' error, got: %v", err)
+	}
+}
+
+// TestFindExecutableInDir_NoExecutable tests error when no executable found
+func TestFindExecutableInDir_NoExecutable(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "acc-find-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a non-matching file
+	nonBinary := filepath.Join(tmpDir, "README.md")
+	if err := os.WriteFile(nonBinary, []byte("readme"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+
+	_, err = findExecutableInDir(tmpDir)
+	if err == nil {
+		t.Error("Expected error for no executable, got nil")
+	}
+
+	if !containsStr(err.Error(), "no acc executable found") {
+		t.Errorf("Expected 'no acc executable found' error, got: %v", err)
+	}
+}
+
+// TestFindExecutableInDir_NonExecutableFile tests that non-executable files are ignored
+func TestFindExecutableInDir_NonExecutableFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Executable bit test not applicable on Windows")
+	}
+
+	tmpDir, err := os.MkdirTemp("", "acc-find-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create acc file without executable permissions
+	nonExecBinary := filepath.Join(tmpDir, "acc")
+	if err := os.WriteFile(nonExecBinary, []byte("not executable"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+
+	_, err = findExecutableInDir(tmpDir)
+	if err == nil {
+		t.Error("Expected error for non-executable file, got nil")
+	}
+
+	if !containsStr(err.Error(), "no acc executable found") {
+		t.Errorf("Expected 'no acc executable found' error, got: %v", err)
+	}
+}
+
+// TestUpgradeWithLegacyArchive tests upgrade with older archive layout (acc-linux-amd64 naming)
+func TestUpgradeWithLegacyArchive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Legacy archive test uses tar.gz format")
+	}
+
+	tmpDir, err := os.MkdirTemp("", "acc-legacy-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create archive with legacy binary name
+	archivePath := filepath.Join(tmpDir, "acc_0.1.0_linux_amd64.tar.gz")
+	legacyBinaryName := fmt.Sprintf("acc-%s-%s", runtime.GOOS, runtime.GOARCH)
+	if err := createTestTarGz(archivePath, legacyBinaryName, []byte("legacy binary")); err != nil {
+		t.Fatalf("failed to create legacy archive: %v", err)
+	}
+
+	// Extract and find
+	extractDir := filepath.Join(tmpDir, "extract")
+	if err := os.MkdirAll(extractDir, 0755); err != nil {
+		t.Fatalf("failed to create extract dir: %v", err)
+	}
+
+	if err := extractTarGz(archivePath, extractDir); err != nil {
+		t.Fatalf("extractTarGz failed: %v", err)
+	}
+
+	found, err := findExecutableInDir(extractDir)
+	if err != nil {
+		t.Fatalf("findExecutableInDir failed: %v", err)
+	}
+
+	expectedPath := filepath.Join(extractDir, legacyBinaryName)
+	if found != expectedPath {
+		t.Errorf("found = %q, want %q", found, expectedPath)
+	}
+
+	// Verify content
+	content, err := os.ReadFile(found)
+	if err != nil {
+		t.Fatalf("failed to read found binary: %v", err)
+	}
+
+	if string(content) != "legacy binary" {
+		t.Errorf("content = %q, want 'legacy binary'", string(content))
+	}
+}
+
 // Helper: check if string contains substring
 func containsStr(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsStrRec(s, substr))
