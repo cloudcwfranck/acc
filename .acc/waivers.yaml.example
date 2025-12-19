@@ -1,0 +1,22 @@
+# Policy Waivers
+#
+# Waivers allow temporary exceptions to policy rules with expiry dates.
+# When a waiver expires, verification will FAIL.
+#
+# Format:
+#   waivers:
+#     - ruleId: <policy-rule-id>
+#       justification: <why this waiver is needed>
+#       expiry: <ISO8601 timestamp>
+#       approvedBy: <optional: who approved this>
+
+waivers:
+  - ruleId: no-root-user
+    justification: Legacy container requires root for initialization
+    expiry: "2025-12-31T23:59:59Z"
+    approvedBy: security-team@example.com
+
+  - ruleId: deprecated-base-image
+    justification: Migration to new base image planned for Q2 2025
+    expiry: "2025-06-30T23:59:59Z"
+    approvedBy: platform-team@example.com

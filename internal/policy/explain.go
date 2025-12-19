@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cloudcwfranck/acc/internal/ui"
+	"github.com/cloudcwfranck/acc/internal/waivers"
 )
 
 // VerifyState represents the persisted verification state
@@ -138,6 +139,27 @@ func printExplanation(state *VerifyState) {
 					message := warning["message"]
 					fmt.Printf("  %d. %s: %s\n", i+1, rule, message)
 				}
+			}
+		}
+	}
+
+	// Load and display waivers
+	loadedWaivers, err := waivers.LoadWaivers()
+	if err == nil && len(loadedWaivers) > 0 {
+		fmt.Println()
+		fmt.Println("Policy Waivers:")
+		for i, w := range loadedWaivers {
+			expiredStr := ""
+			if w.IsExpired() {
+				expiredStr = " ⚠️  EXPIRED"
+			}
+			fmt.Printf("  %d. %s%s\n", i+1, w.RuleID, expiredStr)
+			fmt.Printf("     Justification: %s\n", w.Justification)
+			if w.Expiry != "" {
+				fmt.Printf("     Expires: %s\n", w.Expiry)
+			}
+			if w.ApprovedBy != "" {
+				fmt.Printf("     Approved by: %s\n", w.ApprovedBy)
 			}
 		}
 	}

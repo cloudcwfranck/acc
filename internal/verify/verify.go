@@ -9,6 +9,7 @@ import (
 
 	"github.com/cloudcwfranck/acc/internal/config"
 	"github.com/cloudcwfranck/acc/internal/ui"
+	"github.com/cloudcwfranck/acc/internal/waivers"
 )
 
 // VerifyResult represents the output of a verification operation
@@ -86,7 +87,45 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		}
 	}
 
-	// Step 2: Evaluate policy
+	// Step 2: Check for expired waivers (CRITICAL: expired waiver = fail)
+	if !outputJSON {
+		ui.PrintInfo("Checking policy waivers...")
+	}
+
+	loadedWaivers, err := waivers.LoadWaivers()
+	if err != nil {
+		// Waiver loading failure is not fatal, just log
+		if !outputJSON {
+			ui.PrintWarning(fmt.Sprintf("Failed to load waivers: %v", err))
+		}
+		loadedWaivers = []waivers.Waiver{}
+	}
+
+	// Check for expired waivers - CRITICAL: expired waiver causes verification failure
+	for _, waiver := range loadedWaivers {
+		if waiver.IsExpired() {
+			violation := PolicyViolation{
+				Rule:     waiver.RuleID,
+				Severity: "critical",
+				Result:   "fail",
+				Message:  fmt.Sprintf("Waiver for rule '%s' expired on %s", waiver.RuleID, waiver.Expiry),
+			}
+			result.Violations = append(result.Violations, violation)
+			result.Status = "fail"
+
+			if !outputJSON {
+				ui.PrintError(fmt.Sprintf("Expired waiver: %s (expired: %s)", waiver.RuleID, waiver.Expiry))
+			}
+		}
+	}
+
+	// Fail fast on expired waivers in enforce mode
+	if result.Status == "fail" && cfg.Policy.Mode == "enforce" {
+		saveVerifyState(imageRef, result)
+		return result, fmt.Errorf("verification failed: one or more waivers have expired")
+	}
+
+	// Step 3: Evaluate policy
 	if !outputJSON {
 		ui.PrintInfo("Evaluating policy...")
 	}
@@ -121,7 +160,7 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		}
 	}
 
-	// Step 3: Check attestations (required for promotion)
+	// Step 4: Check attestations (required for promotion)
 	if forPromotion {
 		if !outputJSON {
 			ui.PrintInfo("Checking attestations for promotion...")
