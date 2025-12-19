@@ -14,6 +14,7 @@ import (
 	"github.com/cloudcwfranck/acc/internal/push"
 	"github.com/cloudcwfranck/acc/internal/runtime"
 	"github.com/cloudcwfranck/acc/internal/ui"
+	"github.com/cloudcwfranck/acc/internal/upgrade"
 	"github.com/cloudcwfranck/acc/internal/verify"
 	"github.com/spf13/cobra"
 )
@@ -79,6 +80,7 @@ that can be built, verified, run, pushed, and promoted with cryptographic and po
 		NewConfigCmd(),
 		NewLoginCmd(),
 		NewVersionCmd(),
+		NewUpgradeCmd(),
 	)
 
 	return rootCmd
@@ -492,4 +494,72 @@ func NewVersionCmd() *cobra.Command {
 			}
 		},
 	}
+}
+
+func NewUpgradeCmd() *cobra.Command {
+	var (
+		targetVersion string
+		dryRun        bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "upgrade",
+		Short: "Upgrade acc to the latest version",
+		Long:  "Download and install the latest stable release of acc from GitHub with checksum verification",
+		Example: `  # Upgrade to latest version
+  acc upgrade
+
+  # Upgrade to specific version
+  acc upgrade --version v0.1.6
+
+  # Show what would happen without installing
+  acc upgrade --dry-run`,
+		Run: func(cmd *cobra.Command, args []string) {
+			// Get upgrade package
+			opts := &upgrade.UpgradeOptions{
+				Version:        targetVersion,
+				DryRun:         dryRun,
+				CurrentVersion: version,
+				// Read env vars for testing overrides
+				APIBase:        os.Getenv("ACC_UPGRADE_API_BASE"),
+				DownloadBase:   os.Getenv("ACC_UPGRADE_DOWNLOAD_BASE"),
+				DisableInstall: os.Getenv("ACC_UPGRADE_DISABLE_INSTALL") == "1",
+			}
+
+			result, err := upgrade.Upgrade(opts)
+			if err != nil {
+				if jsonFlag {
+					fmt.Printf(`{"error":"%s"}%s`, err.Error(), "\n")
+				} else {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				}
+				os.Exit(1)
+			}
+
+			if jsonFlag {
+				data, _ := json.Marshal(result)
+				fmt.Println(string(data))
+			} else {
+				if !result.Updated {
+					fmt.Println(result.Message)
+				} else {
+					fmt.Printf("Current version: %s\n", result.CurrentVersion)
+					fmt.Printf("Target version:  %s\n", result.TargetVersion)
+					fmt.Printf("Asset:           %s\n", result.AssetName)
+					if result.Checksum != "" {
+						fmt.Printf("Checksum:        %s\n", result.Checksum[:16]+"...")
+					}
+					if result.InstallPath != "" {
+						fmt.Printf("Installed to:    %s\n", result.InstallPath)
+					}
+					fmt.Printf("\n%s\n", result.Message)
+				}
+			}
+		},
+	}
+
+	cmd.Flags().StringVar(&targetVersion, "version", "", "target version to install (default: latest)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would happen without downloading/installing")
+
+	return cmd
 }
