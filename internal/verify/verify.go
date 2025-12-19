@@ -49,6 +49,11 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		Status:       "pass",
 		Attestations: []string{},
 		Violations:   []PolicyViolation{},
+		PolicyResult: &PolicyResult{
+			Allow:      true,
+			Violations: []PolicyViolation{},
+			Warnings:   []PolicyViolation{},
+		},
 	}
 
 	// Step 1: Verify SBOM exists
@@ -159,18 +164,44 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 
 	policyResult, err := evaluatePolicy(cfg, imageRef, forPromotion)
 	if err != nil {
-		return nil, fmt.Errorf("policy evaluation failed: %w", err)
+		// v0.1.4: Never return nil result - convert error to violation
+		violation := PolicyViolation{
+			Rule:     "policy-evaluation-error",
+			Severity: "critical",
+			Result:   "fail",
+			Message:  fmt.Sprintf("Policy evaluation error: %v", err),
+		}
+		result.Violations = append(result.Violations, violation)
+		result.Status = "fail"
+		result.PolicyResult = &PolicyResult{
+			Allow:      false,
+			Violations: []PolicyViolation{violation},
+			Warnings:   []PolicyViolation{},
+		}
+
+		if !outputJSON {
+			ui.PrintError(violation.Message)
+		}
+
+		// Save state before returning
+		saveVerifyState(imageRef, result)
+
+		// v0.1.4: ALWAYS return valid result (never nil)
+		if cfg.Policy.Mode == "enforce" {
+			return result, fmt.Errorf("verification failed: %s", violation.Message)
+		}
+		// In warn mode, continue with failed status
+	} else {
+		result.PolicyResult = policyResult
+		result.Violations = append(result.Violations, policyResult.Violations...)
 	}
 
-	result.PolicyResult = policyResult
-	result.Violations = append(result.Violations, policyResult.Violations...)
-
-	// Determine overall status
-	if len(policyResult.Violations) > 0 {
+	// Determine overall status (only if we didn't already handle error above)
+	if result.PolicyResult != nil && len(result.PolicyResult.Violations) > 0 {
 		result.Status = "fail"
 		if !outputJSON {
-			ui.PrintError(fmt.Sprintf("Policy evaluation failed with %d violations:", len(policyResult.Violations)))
-			for _, v := range policyResult.Violations {
+			ui.PrintError(fmt.Sprintf("Policy evaluation failed with %d violations:", len(result.PolicyResult.Violations)))
+			for _, v := range result.PolicyResult.Violations {
 				ui.PrintError(fmt.Sprintf("  [%s] %s: %s", v.Severity, v.Rule, v.Message))
 			}
 		}
@@ -181,7 +212,7 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 			saveVerifyState(imageRef, result)
 			return result, fmt.Errorf("verification failed: policy violations detected")
 		}
-	} else {
+	} else if result.Status != "fail" {
 		if !outputJSON {
 			ui.PrintSuccess("Policy evaluation passed")
 		}
@@ -217,13 +248,23 @@ type VerifyState struct {
 }
 
 // FormatJSON returns JSON representation
+// v0.1.4: Nil-safe to prevent panics
 func (r *VerifyResult) FormatJSON() string {
+	if r == nil {
+		// Defensive: return error JSON if result is nil
+		return `{"status":"fail","error":"internal error: nil result"}`
+	}
 	data, _ := json.MarshalIndent(r, "", "  ")
 	return string(data)
 }
 
 // ExitCode returns the appropriate exit code for this result
+// v0.1.4: Nil-safe to prevent panics
 func (r *VerifyResult) ExitCode() int {
+	if r == nil {
+		// Defensive: should never happen, but prevent panic
+		return 2
+	}
 	if r.Status == "pass" {
 		return 0
 	}
@@ -341,17 +382,28 @@ func buildRegoInput(cfg *config.Config, imageRef string, forPromotion bool) (*Re
 }
 
 // evaluateRego runs OPA evaluation and returns violations
-// v0.1.3: OPA is REQUIRED - no text parsing fallback
+// v0.1.4: OPA missing creates a violation (not an error) to prevent panics
 func evaluateRego(policyDir string, input *RegoInput) ([]PolicyViolation, error) {
 	// Check if opa is available
 	opaPath, err := exec.LookPath("opa")
 	if err != nil {
-		// OPA is REQUIRED for security decisions
-		// Check for escape hatch (dev/testing only)
-		if os.Getenv("ACC_ALLOW_NO_OPA") == "1" {
-			return []PolicyViolation{}, nil
+		// v0.1.4: OPA missing is a CRITICAL VIOLATION, not a bypass
+		// Even with escape hatch, return a violation (for CI/testing compatibility)
+		violation := PolicyViolation{
+			Rule:     "opa-required",
+			Severity: "critical",
+			Result:   "fail",
+			Message:  "OPA not found. Policy evaluation requires OPA to be installed.\n\nInstall OPA: https://www.openpolicyagent.org/docs/latest/#running-opa",
 		}
-		return nil, fmt.Errorf("opa command not found: policy evaluation requires OPA\n\nInstall OPA: https://www.openpolicyagent.org/docs/latest/#running-opa\nOr set ACC_ALLOW_NO_OPA=1 (development only, NOT for production)")
+
+		// Escape hatch for CI/testing: allows tests to run but still records violation
+		if os.Getenv("ACC_ALLOW_NO_OPA") == "1" {
+			// Return violation but don't error - allows tests to complete
+			return []PolicyViolation{violation}, nil
+		}
+
+		// Without escape hatch, still return violation (not error) to prevent panic
+		return []PolicyViolation{violation}, nil
 	}
 
 	// Marshal input to JSON

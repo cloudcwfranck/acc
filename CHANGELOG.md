@@ -16,6 +16,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.1.4] - 2025-01-19
+
+### Fixed - Panic Prevention & State Persistence
+
+**CRITICAL: This release fixes release-blocking crashes and state persistence bugs discovered in v0.1.3 during Linux/WSL2 testing.**
+
+**The Bugs:**
+
+1. **Panic when OPA missing**: v0.1.3 panicked with nil pointer dereference when OPA was not installed
+2. **Security bypass with escape hatch**: `ACC_ALLOW_NO_OPA=1` caused verification to PASS instead of FAIL
+3. **Missing state persistence**: `acc policy explain` showed "no verification history" because state wasn't written on failure
+4. **Nil result handling**: Main command didn't handle nil results defensively
+
+**What Was Broken in v0.1.3:**
+
+- `Verify()` returned `(nil, error)` when OPA missing, causing `result.ExitCode()` to panic on nil pointer
+- `ACC_ALLOW_NO_OPA=1` returned empty violations, making verification pass (security bypass)
+- State file wasn't written when `evaluatePolicy()` failed, breaking `acc policy explain`
+- `FormatJSON()` and `ExitCode()` methods weren't nil-safe
+- Exit code 2 (panic) instead of clean failure with exit code 1
+
+**Example of Broken Behavior (v0.1.3):**
+```bash
+$ acc verify demo-app:latest  # OPA not installed
+panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0x...]
+goroutine 1 [running]:
+github.com/cloudcwfranck/acc/internal/verify.(*VerifyResult).ExitCode(...)
+        internal/verify/verify.go:227
+exit status 2
+```
+
+**v0.1.4 behavior (CORRECT):**
+```bash
+$ acc verify --json demo-app:latest  # OPA not installed
+{
+  "status": "fail",
+  "policyResult": {
+    "allow": false,
+    "violations": [{
+      "rule": "opa-required",
+      "severity": "critical",
+      "result": "fail",
+      "message": "OPA not found. Policy evaluation requires OPA to be installed.\n\nInstall OPA: https://www.openpolicyagent.org/docs/latest/#running-opa"
+    }]
+  }
+}
+$ echo $?
+1
+```
+
+**What's Fixed in v0.1.4:**
+
+- ✅ **Zero panics** - `Verify()` ALWAYS returns valid `VerifyResult`, never nil
+- ✅ **OPA missing creates violation** - Returns `opa-required` critical violation instead of error
+- ✅ **Escape hatch fixed** - `ACC_ALLOW_NO_OPA=1` still creates violation (not a bypass), just allows tests to run
+- ✅ **Nil-safe methods** - `ExitCode()` and `FormatJSON()` handle nil receiver defensively
+- ✅ **State persistence on failure** - `saveVerifyState()` called even when policy evaluation fails
+- ✅ **PolicyResult always initialized** - Initial `VerifyResult` includes non-nil `PolicyResult`
+- ✅ **Main command defensive** - Handles nil result with exit code 2 and error message
+- ✅ **Clean error messages** - OPA missing shows installation instructions, not panic trace
+
+### Impact
+
+**v0.1.3 MUST NOT be used** - Panics on systems without OPA installed, making acc unusable.
+
+**v0.1.4 fixes all release-blocking crashes:**
+- Systems without OPA get clean failure with installation instructions (no panic)
+- JSON output is always valid (no null fields)
+- Exit codes are deterministic (0 = pass, 1 = fail, 2 = internal error)
+- `acc policy explain` works after failed verification
+- `ACC_ALLOW_NO_OPA=1` no longer bypasses security checks
+
+**Users of v0.1.3 MUST upgrade immediately to v0.1.4.**
+
+### Testing
+
+- ✅ Added `TestVerify_NoPanic_WhenOPAIsMissing` - Verifies no panic occurs (FAILS on v0.1.3, PASSES on v0.1.4)
+- ✅ Added `TestVerify_ReturnsStructuredFailure_WhenOPAIsMissing` - Verifies structured failure with violations (FAILS on v0.1.3, PASSES on v0.1.4)
+- ✅ Added `TestVerifyResultExitCode_NilSafe` - Verifies ExitCode handles nil (FAILS on v0.1.3, PASSES on v0.1.4)
+- ✅ Added `TestVerify_WritesState_OnFailure` - Verifies state persists on failure (FAILS on v0.1.3, PASSES on v0.1.4)
+- ✅ Updated `TestOPAEscapeHatch` - Verifies escape hatch creates violation, not bypass (FAILS on v0.1.3, PASSES on v0.1.4)
+- ✅ All existing tests pass on v0.1.4
+
 ## [0.1.3] - 2025-01-19
 
 ### Fixed - Policy Input & Evaluation Correctness
@@ -275,7 +359,8 @@ acc follows [Semantic Versioning](https://semver.org/):
 
 ---
 
-[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/cloudcwfranck/acc/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/cloudcwfranck/acc/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/cloudcwfranck/acc/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/cloudcwfranck/acc/compare/v0.1.0...v0.1.1

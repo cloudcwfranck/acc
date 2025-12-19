@@ -161,6 +161,20 @@ func NewVerifyCmd() *cobra.Command {
 
 			// Verify
 			result, err := verify.Verify(cfg, ref, false, jsonFlag)
+
+			// v0.1.4: Defensive nil check (should never happen after v0.1.4 fixes)
+			if result == nil {
+				if jsonFlag {
+					fmt.Println(`{"status":"fail","error":"internal error: nil result"}`)
+				} else {
+					fmt.Fprintln(os.Stderr, "Error: verification failed with internal error")
+					if err != nil {
+						fmt.Fprintln(os.Stderr, err.Error())
+					}
+				}
+				os.Exit(2)
+			}
+
 			if err != nil {
 				if jsonFlag {
 					fmt.Println(result.FormatJSON())
