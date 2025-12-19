@@ -14,7 +14,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Nothing yet
 
 ### Fixed
-- **acc upgrade backward compatibility** - Fixed upgrade/downgrade to older versions by implementing flexible binary detection that searches for executables matching `acc` or `acc-*` patterns in release archives, supporting both current (`acc`) and legacy (`acc-linux-amd64`) naming conventions
+- Nothing yet
+
+## [0.1.8] - 2025-12-19
+
+### Added - Interactive Terminal Walkthrough
+
+**This release adds a 60-second interactive demo for v0.1.8, the final release in the 0.1.x line.**
+
+**What's New:**
+
+- ✅ **Interactive walkthrough** - Browser-based terminal demo at `docs/demo/acc-walkthrough.html`
+- ✅ **60-second overview** - Shows init, verify (pass/fail), inspect, policy explain, and attest workflows
+- ✅ **Professional presentation** - Dark theme with animated typing effects and terminal aesthetics
+- ✅ **Self-contained** - Zero dependencies, works offline, no system commands executed
+- ✅ **README integration** - New Demo section with prominent link to walkthrough
+
+**Demo Flow:**
+
+1. Initialize acc project
+2. Verify compliant image (PASS)
+3. Inspect trust summary
+4. Verify non-compliant image (FAIL - runs as root)
+5. Explain policy violation with remediation
+6. Create attestation for verified image
+
+**Usage:**
+
+Open `docs/demo/acc-walkthrough.html` in any browser or view online at GitHub Pages.
+
+**Impact:**
+
+- **First-time users** get instant understanding of acc workflows
+- **Documentation** includes visual demonstration alongside text
+- **Onboarding** simplified with interactive preview before installation
+
+**No Functional Changes:**
+
+This is a documentation-only release. No changes to:
+- acc commands or CLI behavior
+- Policy evaluation logic
+- Verification, attestation, or inspection code
+- Any existing functionality
+
+## [0.1.7] - 2025-12-19
+
+### Fixed - Upgrade Backward Compatibility
+
+**This release fixes backward compatibility for `acc upgrade` to support older release archive formats.**
+
+**The Bug:**
+
+`acc upgrade` failed when upgrading/downgrading to older versions due to inconsistent binary naming in release archives. Older releases used `acc-linux-amd64`, `acc-darwin-arm64` naming, while newer releases use `acc`.
+
+**What's Fixed:**
+
+- ✅ **Flexible binary detection** - Searches for executables matching `acc` or `acc-*` patterns
+- ✅ **Exactly one enforcement** - Errors if 0 or multiple executables found in archive
+- ✅ **Executable validation** - Verifies executable permissions on Unix systems
+- ✅ **Better error messages** - Includes version context when `--version` flag is used
+- ✅ **Legacy support** - Works with `acc-OS-ARCH` naming from v0.1.0-v0.1.5
+
+**Testing:**
+
+- ✅ Added `TestFindExecutableInDir_StandardName` - Current "acc" naming
+- ✅ Added `TestFindExecutableInDir_LegacyName` - Legacy "acc-OS-ARCH" naming
+- ✅ Added `TestFindExecutableInDir_MultipleExecutables` - Enforces exactly one
+- ✅ Added `TestFindExecutableInDir_NoExecutable` - Handles missing binary
+- ✅ Added `TestFindExecutableInDir_NonExecutableFile` - Unix permissions check
+- ✅ Added `TestUpgradeWithLegacyArchive` - End-to-end legacy archive test
+- ✅ All 16 upgrade package tests pass
+
+**Security Guarantees Preserved:**
+
+- SHA256 checksum verification unchanged
+- Atomic binary replacement unchanged
+- Backup/rollback mechanism unchanged
+- No weakening of validation
+
+**Example:**
+
+```bash
+# Now works with any version
+acc upgrade --version v0.1.0  # Legacy naming
+acc upgrade --version v0.1.6  # Current naming
+acc upgrade                   # Latest (any format)
+```
 
 ## [0.1.6] - 2025-12-19
 
@@ -501,7 +586,9 @@ acc follows [Semantic Versioning](https://semver.org/):
 
 ---
 
-[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/cloudcwfranck/acc/compare/v0.1.7...v0.1.8
+[0.1.7]: https://github.com/cloudcwfranck/acc/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/cloudcwfranck/acc/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/cloudcwfranck/acc/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/cloudcwfranck/acc/compare/v0.1.3...v0.1.4

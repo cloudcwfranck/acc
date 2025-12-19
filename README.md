@@ -19,6 +19,22 @@
 - **Cryptographic attestations** - Sign and verify build provenance
 - **Multi-tool support** - Works with Docker, Podman, Buildah, and nerdctl
 
+## Demo
+
+**See acc in action - 60-second interactive walkthrough:**
+
+👉 **[Launch Interactive Demo](docs/demo/acc-walkthrough.html)** 👈
+
+The demo shows:
+- Initializing an acc project
+- Verifying a compliant image (PASS)
+- Inspecting trust summary
+- Verifying a non-compliant image (FAIL)
+- Explaining policy decisions
+- Creating attestations
+
+*Note: This is an illustrative demo with simulated output. No commands are executed on your system.*
+
 ## Quick Start
 
 ### Prerequisites
