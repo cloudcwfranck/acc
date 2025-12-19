@@ -229,3 +229,75 @@ func TestFormatJSON(t *testing.T) {
 		t.Errorf("expected imageRef 'test:latest', got '%s'", decoded.ImageRef)
 	}
 }
+
+// TestFindAttestationsInSubdirectories tests that attestations in subdirectories are discovered
+// This test would FAIL on v0.1.0 (only looked at top-level files)
+// This test should PASS after the fix
+func TestFindAttestationsInSubdirectories(t *testing.T) {
+	// Create temporary directory for test
+	tmpDir, err := os.MkdirTemp("", "acc-attest-subdir-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Change to temp directory
+	originalDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change dir: %v", err)
+	}
+	defer os.Chdir(originalDir)
+
+	// Create attestations in subdirectories (as attest command does)
+	// .acc/attestations/<digest>/YYYYMMDD-HHMMSS-attestation.json
+	attestDir1 := filepath.Join(".acc", "attestations", "abc123def456")
+	if err := os.MkdirAll(attestDir1, 0755); err != nil {
+		t.Fatalf("failed to create attestation subdir 1: %v", err)
+	}
+
+	attestDir2 := filepath.Join(".acc", "attestations", "def456abc789")
+	if err := os.MkdirAll(attestDir2, 0755); err != nil {
+		t.Fatalf("failed to create attestation subdir 2: %v", err)
+	}
+
+	// Create attestation files in subdirectories
+	attestFile1 := filepath.Join(attestDir1, "20250115-100000-attestation.json")
+	if err := os.WriteFile(attestFile1, []byte(`{"schemaVersion":"v0.1"}`), 0644); err != nil {
+		t.Fatalf("failed to write attestation file 1: %v", err)
+	}
+
+	attestFile2 := filepath.Join(attestDir2, "20250115-110000-attestation.json")
+	if err := os.WriteFile(attestFile2, []byte(`{"schemaVersion":"v0.1"}`), 0644); err != nil {
+		t.Fatalf("failed to write attestation file 2: %v", err)
+	}
+
+	attestFile3 := filepath.Join(attestDir2, "20250115-120000-attestation.json")
+	if err := os.WriteFile(attestFile3, []byte(`{"schemaVersion":"v0.1"}`), 0644); err != nil {
+		t.Fatalf("failed to write attestation file 3: %v", err)
+	}
+
+	// Test attestation discovery
+	attestations := findAttestations()
+
+	// Should find ALL 3 attestations in subdirectories
+	if len(attestations) != 3 {
+		t.Errorf("Expected 3 attestations in subdirectories, got %d", len(attestations))
+		t.Logf("Found attestations: %v", attestations)
+	}
+
+	// Verify paths are correct
+	foundPaths := make(map[string]bool)
+	for _, path := range attestations {
+		foundPaths[path] = true
+	}
+
+	if !foundPaths[attestFile1] {
+		t.Errorf("Expected to find %s", attestFile1)
+	}
+	if !foundPaths[attestFile2] {
+		t.Errorf("Expected to find %s", attestFile2)
+	}
+	if !foundPaths[attestFile3] {
+		t.Errorf("Expected to find %s", attestFile3)
+	}
+}

@@ -188,22 +188,31 @@ func findSBOM(cfg *config.Config) (string, string) {
 }
 
 // findAttestations looks for attestation files in .acc/attestations/
+// Attestations are stored in subdirectories: .acc/attestations/<digest>/*.json
 func findAttestations() []string {
 	attestDir := filepath.Join(".acc", "attestations")
 	if _, err := os.Stat(attestDir); os.IsNotExist(err) {
 		return []string{}
 	}
 
-	files, err := os.ReadDir(attestDir)
+	var attestations []string
+
+	// Walk through all subdirectories to find attestation files
+	err := filepath.Walk(attestDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories, look for .json files
+		if !info.IsDir() && filepath.Ext(path) == ".json" {
+			attestations = append(attestations, path)
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return []string{}
-	}
-
-	var attestations []string
-	for _, file := range files {
-		if !file.IsDir() {
-			attestations = append(attestations, filepath.Join(attestDir, file.Name()))
-		}
 	}
 
 	return attestations

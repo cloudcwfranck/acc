@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cloudcwfranck/acc/internal/config"
@@ -223,23 +224,124 @@ func checkSBOMExists(cfg *config.Config) (bool, error) {
 
 // evaluatePolicy evaluates the policy (currently stubbed - would use OPA/Rego)
 func evaluatePolicy(cfg *config.Config, imageRef string, forPromotion bool) (*PolicyResult, error) {
-	// TODO: Implement actual Rego policy evaluation using OPA
-	// For now, return a basic check
-
 	result := &PolicyResult{
 		Allow:      true,
 		Violations: []PolicyViolation{},
 		Warnings:   []PolicyViolation{},
 	}
 
-	// NOTE: This is a stub implementation
-	// Real implementation would:
-	// 1. Load .acc/policy/*.rego files
-	// 2. Use github.com/open-policy-agent/opa to evaluate
-	// 3. Pass image metadata as input
-	// 4. Return actual policy decision
+	// Load policy files from .acc/policy/
+	policyDir := ".acc/policy"
+
+	// Check if policy directory exists
+	if _, err := os.Stat(policyDir); os.IsNotExist(err) {
+		// No policy directory - allow by default but warn
+		// This is acceptable for v0 - policies are optional
+		return result, nil
+	}
+
+	// Read all .rego files in policy directory
+	files, err := filepath.Glob(filepath.Join(policyDir, "*.rego"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read policy files: %w", err)
+	}
+
+	if len(files) == 0 {
+		// No policy files - allow by default
+		return result, nil
+	}
+
+	// Load all policy content
+	var policyContent string
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read policy file %s: %w", file, err)
+		}
+		policyContent += string(content) + "\n"
+	}
+
+	// Parse policy content to check for deny rules
+	// For v0.1.1, we do simple text parsing to find deny rules
+	// A full OPA integration would be more robust but this fixes the critical bug
+	denies := extractDenyRules(policyContent)
+
+	if len(denies) > 0 {
+		// If ANY deny rules exist, policy fails
+		// This enforces deny semantics: deny is authoritative
+		result.Allow = false
+
+		for _, denyMsg := range denies {
+			violation := PolicyViolation{
+				Rule:     "policy-deny",
+				Severity: "critical",
+				Result:   "fail",
+				Message:  denyMsg,
+			}
+			result.Violations = append(result.Violations, violation)
+		}
+	}
 
 	return result, nil
+}
+
+// extractDenyRules parses Rego content and extracts deny rule messages
+// This is a simplified implementation for v0.1.1 security fix
+// Full OPA evaluation would be more comprehensive
+func extractDenyRules(policyContent string) []string {
+	var denies []string
+
+	// Simple parsing: look for deny["message"] or deny = "message" patterns
+	// This catches common Rego deny patterns
+	lines := strings.Split(policyContent, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Skip comments
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Match: deny["message"] { ... }
+		if strings.Contains(line, "deny[") {
+			// Extract message from deny["message"]
+			start := strings.Index(line, `deny["`)
+			if start >= 0 {
+				start += 6 // len(`deny["`)
+				end := strings.Index(line[start:], `"]`)
+				if end > 0 {
+					msg := line[start : start+end]
+					denies = append(denies, msg)
+				}
+			}
+			continue
+		}
+
+		// Match: deny = "message"
+		if strings.HasPrefix(line, "deny") && strings.Contains(line, "=") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				msg := strings.TrimSpace(parts[1])
+				msg = strings.Trim(msg, `"`)
+				msg = strings.TrimSuffix(msg, "{")
+				msg = strings.TrimSpace(msg)
+				if msg != "" {
+					denies = append(denies, msg)
+				}
+			}
+			continue
+		}
+
+		// Match: deny { true }  or deny { ... }
+		// This is an unconditional deny
+		if strings.HasPrefix(line, "deny") && strings.Contains(line, "{") {
+			denies = append(denies, "Policy deny rule triggered")
+			continue
+		}
+	}
+
+	return denies
 }
 
 // checkAttestations checks if attestations are present (stubbed)
