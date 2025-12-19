@@ -301,3 +301,108 @@ func TestFindAttestationsInSubdirectories(t *testing.T) {
 		t.Errorf("Expected to find %s", attestFile3)
 	}
 }
+
+// v0.1.5 REGRESSION TEST 1: Test per-image verification state
+func TestInspect_PerImageVerificationState(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "acc-inspect-perimage-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(origDir)
+
+	// Setup directories
+	os.MkdirAll(".acc/state/verify", 0755)
+
+	// Create two different digest-scoped states
+	digest1 := "abc123def456"
+	digest2 := "xyz789uvw012"
+
+	state1 := map[string]interface{}{
+		"imageRef":  "test:v1",
+		"status":    "pass",
+		"timestamp": "2025-01-01T00:00:00Z",
+	}
+
+	state2 := map[string]interface{}{
+		"imageRef":  "test:v2",
+		"status":    "fail",
+		"timestamp": "2025-01-01T01:00:00Z",
+	}
+
+	data1, _ := json.MarshalIndent(state1, "", "  ")
+	data2, _ := json.MarshalIndent(state2, "", "  ")
+
+	os.WriteFile(filepath.Join(".acc/state/verify", digest1+".json"), data1, 0644)
+	os.WriteFile(filepath.Join(".acc/state/verify", digest2+".json"), data2, 0644)
+
+	// Test that loadVerifyStatusForImage loads the correct state for each digest
+	status1 := loadVerifyStatusForImage(digest1)
+	if status1 == nil {
+		t.Fatal("Expected non-nil status for digest1")
+	}
+	if status1.Status != "pass" {
+		t.Errorf("Expected status 'pass' for digest1, got '%s'", status1.Status)
+	}
+
+	status2 := loadVerifyStatusForImage(digest2)
+	if status2 == nil {
+		t.Fatal("Expected non-nil status for digest2")
+	}
+	if status2.Status != "fail" {
+		t.Errorf("Expected status 'fail' for digest2, got '%s'", status2.Status)
+	}
+}
+
+// v0.1.5 REGRESSION TEST 2: Test inspect doesn't leak last verify
+func TestInspect_DoesNotLeakLastVerify(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "acc-inspect-noleak-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(origDir)
+
+	// Setup directories
+	os.MkdirAll(".acc/state/verify", 0755)
+
+	// Create a global last_verify.json with status "fail"
+	globalState := map[string]interface{}{
+		"imageRef":  "other:image",
+		"status":    "fail",
+		"timestamp": "2025-01-01T00:00:00Z",
+	}
+	globalData, _ := json.MarshalIndent(globalState, "", "  ")
+	os.WriteFile(".acc/state/last_verify.json", globalData, 0644)
+
+	// Create a digest-scoped state for our image with status "pass"
+	digest := "abc123def456"
+	digestState := map[string]interface{}{
+		"imageRef":  "test:image",
+		"status":    "pass",
+		"timestamp": "2025-01-01T01:00:00Z",
+	}
+	digestData, _ := json.MarshalIndent(digestState, "", "  ")
+	os.WriteFile(filepath.Join(".acc/state/verify", digest+".json"), digestData, 0644)
+
+	// The bug: inspect would show global "fail" instead of digest-scoped "pass"
+	// After fix: inspect should show digest-scoped "pass"
+	status := loadVerifyStatusForImage(digest)
+	if status == nil {
+		t.Fatal("Expected non-nil status")
+	}
+
+	if status.Status != "pass" {
+		t.Errorf("Expected digest-scoped status 'pass', got '%s' (leaked from global last_verify.json)", status.Status)
+	}
+
+	if status.ImageRef != "test:image" {
+		t.Errorf("Expected imageRef 'test:image', got '%s'", status.ImageRef)
+	}
+}

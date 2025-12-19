@@ -75,13 +75,14 @@ func Attest(cfg *config.Config, imageRef, version, commit string, outputJSON boo
 		return nil, fmt.Errorf("verification state not found\n\nRemediation:\n  Run 'acc verify %s' first to generate verification results", imageRef)
 	}
 
-	if !outputJSON {
-		ui.PrintInfo(fmt.Sprintf("Creating attestation for %s", imageRef))
-	}
-
 	// Verify imageRef matches last verified image
 	if err := validateImageMatch(imageRef, verifyState); err != nil {
 		return nil, err
+	}
+
+	// v0.1.5: Only print creation message AFTER validation passes
+	if !outputJSON {
+		ui.PrintInfo(fmt.Sprintf("Creating attestation for %s", imageRef))
 	}
 
 	// Resolve digest
