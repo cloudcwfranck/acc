@@ -1,0 +1,149 @@
+package runtime
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/cloudcwfranck/acc/internal/config"
+	"github.com/cloudcwfranck/acc/internal/ui"
+	"github.com/cloudcwfranck/acc/internal/verify"
+)
+
+// RunOptions represents options for running a workload
+type RunOptions struct {
+	ImageRef    string
+	Args        []string
+	NetworkMode string
+	ReadOnly    bool
+	User        string
+	Capabilities []string
+}
+
+// Run runs a workload locally with verification gates (AGENTS.md Section 2 - acc run)
+// CRITICAL: This MUST call verify first and MUST fail if verification fails (Section 1.1)
+func Run(cfg *config.Config, opts *RunOptions, outputJSON bool) error {
+	// CRITICAL: Verification gates execution (AGENTS.md Section 1.1)
+	if !outputJSON {
+		ui.PrintTrust("Verifying workload before execution...")
+	}
+
+	verifyResult, err := verify.Verify(cfg, opts.ImageRef, false, outputJSON)
+	if err != nil {
+		// RED OUTPUT MEANS STOP (AGENTS.md Section 0)
+		if !outputJSON {
+			ui.PrintError("Verification failed - workload will NOT run")
+		}
+		return fmt.Errorf("verification failed: %w", err)
+	}
+
+	if verifyResult.Status == "fail" {
+		// RED OUTPUT MEANS STOP (AGENTS.md Section 0)
+		if !outputJSON {
+			ui.PrintError("Verification failed - workload will NOT run")
+		}
+		return fmt.Errorf("verification failed with status: %s", verifyResult.Status)
+	}
+
+	if !outputJSON {
+		ui.PrintSuccess("Verification passed - proceeding to run workload")
+	}
+
+	// Detect runtime tool
+	runtime, err := detectRuntime()
+	if err != nil {
+		return err
+	}
+
+	if !outputJSON {
+		ui.PrintInfo(fmt.Sprintf("Using runtime: %s", runtime))
+	}
+
+	// Build run command with security defaults (AGENTS.md Section 8)
+	cmdArgs := buildRunCommand(runtime, opts)
+
+	if !outputJSON {
+		ui.PrintInfo(fmt.Sprintf("Running: %s", strings.Join(cmdArgs, " ")))
+	}
+
+	// Execute workload
+	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("workload execution failed: %w", err)
+	}
+
+	return nil
+}
+
+// detectRuntime detects which container runtime is available
+func detectRuntime() (string, error) {
+	runtimes := []string{"docker", "podman", "nerdctl"}
+	for _, rt := range runtimes {
+		if _, err := exec.LookPath(rt); err == nil {
+			return rt, nil
+		}
+	}
+	return "", fmt.Errorf("no container runtime found (tried: docker, podman, nerdctl)\n\nRemediation:\n  - Install Docker: https://docs.docker.com/get-docker/\n  - Or install Podman: https://podman.io/getting-started/installation\n  - Or install nerdctl: https://github.com/containerd/nerdctl")
+}
+
+// buildRunCommand builds the run command with security defaults (AGENTS.md Section 8)
+func buildRunCommand(runtime string, opts *RunOptions) []string {
+	args := []string{runtime, "run"}
+
+	// Remove container after run
+	args = append(args, "--rm")
+
+	// Interactive + TTY for user interaction
+	args = append(args, "-it")
+
+	// Apply security defaults (AGENTS.md Section 8)
+
+	// 1. Non-root user (if specified)
+	if opts.User != "" {
+		args = append(args, "--user", opts.User)
+	} else {
+		// Default to non-root user if runtime supports it
+		if runtime == "docker" || runtime == "podman" {
+			// Warn if no user specified
+			ui.PrintWarning("No user specified - consider using --user to run as non-root")
+		}
+	}
+
+	// 2. Read-only filesystem where supported
+	if opts.ReadOnly {
+		args = append(args, "--read-only")
+	}
+
+	// 3. Network restricted by default
+	networkMode := opts.NetworkMode
+	if networkMode == "" {
+		networkMode = "none"
+	}
+	args = append(args, "--network", networkMode)
+
+	// 4. Drop all capabilities by default, add only specified ones
+	if runtime == "docker" || runtime == "podman" {
+		args = append(args, "--cap-drop", "ALL")
+		for _, cap := range opts.Capabilities {
+			args = append(args, "--cap-add", cap)
+		}
+	}
+
+	// Security options
+	if runtime == "docker" || runtime == "podman" {
+		args = append(args, "--security-opt", "no-new-privileges")
+	}
+
+	// Add image reference
+	args = append(args, opts.ImageRef)
+
+	// Add any additional arguments
+	args = append(args, opts.Args...)
+
+	return args
+}
