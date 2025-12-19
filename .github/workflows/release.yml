@@ -64,14 +64,14 @@ jobs:
       run: |
         cd dist
 
-        # Create tar.gz for Linux/macOS
-        tar -czf acc-${{ steps.version.outputs.version_no_v }}-linux-amd64.tar.gz acc-linux-amd64
-        tar -czf acc-${{ steps.version.outputs.version_no_v }}-linux-arm64.tar.gz acc-linux-arm64
-        tar -czf acc-${{ steps.version.outputs.version_no_v }}-darwin-amd64.tar.gz acc-darwin-amd64
-        tar -czf acc-${{ steps.version.outputs.version_no_v }}-darwin-arm64.tar.gz acc-darwin-arm64
+        # Create tar.gz for Linux/macOS (canonical naming: acc_X.Y.Z_platform_arch)
+        tar -czf acc_${{ steps.version.outputs.version_no_v }}_linux_amd64.tar.gz acc-linux-amd64
+        tar -czf acc_${{ steps.version.outputs.version_no_v }}_linux_arm64.tar.gz acc-linux-arm64
+        tar -czf acc_${{ steps.version.outputs.version_no_v }}_darwin_amd64.tar.gz acc-darwin-amd64
+        tar -czf acc_${{ steps.version.outputs.version_no_v }}_darwin_arm64.tar.gz acc-darwin-arm64
 
         # Create zip for Windows
-        zip acc-${{ steps.version.outputs.version_no_v }}-windows-amd64.zip acc-windows-amd64.exe
+        zip acc_${{ steps.version.outputs.version_no_v }}_windows_amd64.zip acc-windows-amd64.exe
 
         # Clean up raw binaries
         rm acc-linux-amd64 acc-linux-arm64 acc-darwin-amd64 acc-darwin-arm64 acc-windows-amd64.exe
@@ -100,6 +100,41 @@ jobs:
           echo "" >> release_notes.md
           echo "See [CHANGELOG.md](https://github.com/cloudcwfranck/acc/blob/main/CHANGELOG.md) for details." >> release_notes.md
         fi
+
+        # Append verification instructions
+        cat >> release_notes.md <<'EOF'
+
+        ## Installation
+
+        Download the appropriate binary for your platform and verify the checksum:
+
+        **Linux (AMD64):**
+        ```bash
+        curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc_${VERSION}_linux_amd64.tar.gz"
+        curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/checksums.txt"
+        sha256sum -c checksums.txt --ignore-missing
+        tar -xzf acc_${VERSION}_linux_amd64.tar.gz
+        sudo mv acc-linux-amd64 /usr/local/bin/acc
+        chmod +x /usr/local/bin/acc
+        acc version
+        ```
+
+        **macOS (Apple Silicon):**
+        ```bash
+        curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc_${VERSION}_darwin_arm64.tar.gz"
+        curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/checksums.txt"
+        shasum -a 256 -c checksums.txt --ignore-missing
+        tar -xzf acc_${VERSION}_darwin_arm64.tar.gz
+        sudo mv acc-darwin-arm64 /usr/local/bin/acc
+        chmod +x /usr/local/bin/acc
+        acc version
+        ```
+
+        See [README.md](https://github.com/cloudcwfranck/acc#installation) for complete installation instructions.
+        EOF
+
+        # Replace ${VERSION} placeholder with actual version
+        sed -i "s/\${VERSION}/$VERSION/g" release_notes.md
 
         cat release_notes.md
 

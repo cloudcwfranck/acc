@@ -1,0 +1,84 @@
+# Dockerfile.release - Container image for acc releases
+#
+# This Dockerfile creates a minimal OCI image containing a pre-built acc binary.
+# It is NOT automatically built or pushed - manual publishing only.
+#
+# Usage:
+#   1. Download a release binary from GitHub Releases
+#   2. Build the image with the binary
+#   3. Push to ghcr.io/cloudcwfranck/acc
+#
+# Example:
+#   # Download Linux AMD64 binary
+#   VERSION=0.1.0
+#   curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc_${VERSION}_linux_amd64.tar.gz"
+#   tar -xzf "acc_${VERSION}_linux_amd64.tar.gz"
+#
+#   # Build image
+#   docker build -f Dockerfile.release --build-arg BINARY=acc-linux-amd64 -t ghcr.io/cloudcwfranck/acc:${VERSION} .
+#   docker tag ghcr.io/cloudcwfranck/acc:${VERSION} ghcr.io/cloudcwfranck/acc:latest
+#
+#   # Test
+#   docker run --rm ghcr.io/cloudcwfranck/acc:${VERSION} version
+#
+#   # Push (requires authentication)
+#   echo $GITHUB_TOKEN | docker login ghcr.io -u cloudcwfranck --password-stdin
+#   docker push ghcr.io/cloudcwfranck/acc:${VERSION}
+#   docker push ghcr.io/cloudcwfranck/acc:latest
+#
+# Multi-architecture images:
+#   See packaging/README.md for instructions on building multi-arch images with buildx
+
+# Use minimal base image
+FROM alpine:3.19
+
+# Build argument for binary path
+ARG BINARY=acc-linux-amd64
+
+# Metadata labels (OCI annotations)
+LABEL org.opencontainers.image.title="acc"
+LABEL org.opencontainers.image.description="Secure Workload Accelerator - Policy-gated OCI workload verification"
+LABEL org.opencontainers.image.url="https://github.com/cloudcwfranck/acc"
+LABEL org.opencontainers.image.source="https://github.com/cloudcwfranck/acc"
+LABEL org.opencontainers.image.vendor="acc contributors"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+LABEL org.opencontainers.image.documentation="https://github.com/cloudcwfranck/acc/blob/main/README.md"
+
+# Install minimal runtime dependencies
+# acc itself has no runtime dependencies, but users may need docker/podman/syft
+RUN apk add --no-cache \
+    ca-certificates \
+    && rm -rf /var/cache/apk/*
+
+# Copy pre-built binary
+COPY ${BINARY} /usr/local/bin/acc
+
+# Make binary executable
+RUN chmod +x /usr/local/bin/acc
+
+# Create non-root user for running acc
+RUN addgroup -g 1000 acc && \
+    adduser -D -u 1000 -G acc acc
+
+# Create workspace directory
+RUN mkdir -p /workspace && chown acc:acc /workspace
+WORKDIR /workspace
+
+# Switch to non-root user
+USER acc
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/acc"]
+
+# Default command shows help
+CMD ["--help"]
+
+# Health check (optional - shows version)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=1 \
+  CMD ["/usr/local/bin/acc", "version"]
+
+# Notes:
+# - This image does NOT include docker/podman/syft - users must mount docker socket or install tools
+# - For CI usage, use docker-in-docker or mount host docker socket: -v /var/run/docker.sock:/var/run/docker.sock
+# - Image size is minimal (~10MB + acc binary ~15MB = ~25MB total)
+# - Multi-arch images can be built with docker buildx for linux/amd64 and linux/arm64
