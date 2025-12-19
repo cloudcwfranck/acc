@@ -8,10 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Nothing yet
+- **Distribution Channels**
+  - Homebrew Formula draft in `packaging/homebrew/acc.rb` for future tap publishing
+  - Container image support via `Dockerfile.release` for GHCR distribution
+  - CI/CD usage examples in README for automated pipeline integration
+  - Comprehensive distribution guide in `packaging/README.md`
+- **Documentation**
+  - Complete Windows PowerShell installation instructions
+  - macOS Intel detailed installation steps
+  - Multi-architecture container build documentation
 
 ### Changed
-- Nothing yet
+- **Release Artifacts Naming** - Changed from dashes to underscores for canonical format:
+  - `acc-0.1.0-linux-amd64.tar.gz` → `acc_0.1.0_linux_amd64.tar.gz`
+  - Aligns with industry standards (Homebrew, GoReleaser)
+- **GitHub Release Notes** - Automatic installation instructions appended to release notes
+- **README Install Section** - Updated all artifact URLs to match new naming convention
 
 ### Fixed
 - Nothing yet
