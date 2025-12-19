@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+
+    - name: Extract version from tag
+      id: version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version_no_v=${VERSION#v}" >> $GITHUB_OUTPUT
+
+    - name: Run tests
+      run: go test -v ./...
+
+    - name: Build cross-platform binaries
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        COMMIT: ${{ github.sha }}
+        BUILD_DATE: ${{ github.event.repository.updated_at }}
+      run: |
+        mkdir -p dist
+
+        # Build flags with version injection
+        LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${BUILD_DATE}"
+
+        # Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/acc-linux-amd64 ./cmd/acc
+
+        # Linux ARM64
+        GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/acc-linux-arm64 ./cmd/acc
+
+        # macOS AMD64
+        GOOS=darwin GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/acc-darwin-amd64 ./cmd/acc
+
+        # macOS ARM64 (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/acc-darwin-arm64 ./cmd/acc
+
+        # Windows AMD64
+        GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/acc-windows-amd64.exe ./cmd/acc
+
+    - name: Package artifacts
+      run: |
+        cd dist
+
+        # Create tar.gz for Linux/macOS
+        tar -czf acc-${{ steps.version.outputs.version_no_v }}-linux-amd64.tar.gz acc-linux-amd64
+        tar -czf acc-${{ steps.version.outputs.version_no_v }}-linux-arm64.tar.gz acc-linux-arm64
+        tar -czf acc-${{ steps.version.outputs.version_no_v }}-darwin-amd64.tar.gz acc-darwin-amd64
+        tar -czf acc-${{ steps.version.outputs.version_no_v }}-darwin-arm64.tar.gz acc-darwin-arm64
+
+        # Create zip for Windows
+        zip acc-${{ steps.version.outputs.version_no_v }}-windows-amd64.zip acc-windows-amd64.exe
+
+        # Clean up raw binaries
+        rm acc-linux-amd64 acc-linux-arm64 acc-darwin-amd64 acc-darwin-arm64 acc-windows-amd64.exe
+
+    - name: Generate checksums
+      run: |
+        cd dist
+        sha256sum *.tar.gz *.zip > checksums.txt
+        cat checksums.txt
+
+    - name: Extract changelog for this version
+      id: changelog
+      run: |
+        VERSION="${{ steps.version.outputs.version_no_v }}"
+
+        # Extract changelog section for this version
+        awk -v ver="$VERSION" '
+          /^## \['"$VERSION"'\]/ { found=1; next }
+          found && /^## \[/ { exit }
+          found { print }
+        ' CHANGELOG.md > release_notes.md
+
+        # If release notes are empty, use a default message
+        if [ ! -s release_notes.md ]; then
+          echo "Release $VERSION" > release_notes.md
+          echo "" >> release_notes.md
+          echo "See [CHANGELOG.md](https://github.com/cloudcwfranck/acc/blob/main/CHANGELOG.md) for details." >> release_notes.md
+        fi
+
+        cat release_notes.md
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        body_path: release_notes.md
+        files: |
+          dist/*.tar.gz
+          dist/*.zip
+          dist/checksums.txt
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.version, '-') || startsWith(steps.version.outputs.version, 'v0.') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload artifacts for verification
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-artifacts-${{ steps.version.outputs.version }}
+        path: dist/
+        retention-days: 30
