@@ -1,11 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
+	"github.com/cloudcwfranck/acc/internal/attest"
 	"github.com/cloudcwfranck/acc/internal/build"
 	"github.com/cloudcwfranck/acc/internal/config"
+	"github.com/cloudcwfranck/acc/internal/inspect"
+	"github.com/cloudcwfranck/acc/internal/policy"
+	"github.com/cloudcwfranck/acc/internal/promote"
 	"github.com/cloudcwfranck/acc/internal/runtime"
 	"github.com/cloudcwfranck/acc/internal/ui"
 	"github.com/cloudcwfranck/acc/internal/verify"
@@ -245,47 +250,162 @@ func NewPushCmd() *cobra.Command {
 }
 
 func NewPromoteCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "promote",
+	var (
+		imageRef  string
+		targetEnv string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "promote [image] --to <env>",
 		Short: "Re-verify and promote workload",
 		Long:  "Re-verify, apply environment-specific policy, and retag without rebuild",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented yet")
+			// Load config
+			cfg, err := config.Load(configFile)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w\n\nHint: Run 'acc init' to create a configuration file", err)
+			}
+
+			ref := imageRef
+			if len(args) > 0 {
+				ref = args[0]
+			}
+
+			if ref == "" {
+				return fmt.Errorf("image reference required\n\nUsage: acc promote <image> --to <env>")
+			}
+
+			// Promote
+			result, err := promote.Promote(cfg, ref, targetEnv, jsonFlag)
+			if err != nil {
+				return err
+			}
+
+			if jsonFlag {
+				data, _ := json.MarshalIndent(result, "", "  ")
+				fmt.Println(string(data))
+			}
+
+			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to promote")
+	cmd.Flags().StringVar(&targetEnv, "to", "", "target environment (required)")
+	cmd.MarkFlagRequired("to")
+
+	return cmd
 }
 
 func NewPolicyCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "policy",
 		Short: "Manage and test policies",
 		Long:  "List policies, test policies, and explain last decision",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented yet")
+			return cmd.Help()
 		},
 	}
+
+	// Add explain subcommand
+	explainCmd := &cobra.Command{
+		Use:   "explain [last]",
+		Short: "Explain last verification decision",
+		Long:  "Display developer-friendly explanation of the last verification decision",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return policy.Explain(jsonFlag)
+		},
+	}
+
+	cmd.AddCommand(explainCmd)
+	return cmd
 }
 
 func NewAttestCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "attest",
-		Short: "Attach attestations to artifacts",
-		Long:  "Attach attestations (SLSA, build metadata, env approval)",
+	var imageRef string
+
+	cmd := &cobra.Command{
+		Use:   "attest [image]",
+		Short: "Create attestation for artifact",
+		Long:  "Create minimal attestation with build metadata and policy hash",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented yet")
+			// Load config
+			cfg, err := config.Load(configFile)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w\n\nHint: Run 'acc init' to create a configuration file", err)
+			}
+
+			ref := imageRef
+			if len(args) > 0 {
+				ref = args[0]
+			}
+
+			if ref == "" {
+				return fmt.Errorf("image reference required\n\nUsage: acc attest <image>")
+			}
+
+			// Create attestation
+			result, err := attest.Attest(cfg, ref, jsonFlag)
+			if err != nil {
+				return err
+			}
+
+			if jsonFlag {
+				fmt.Println(result.FormatJSON())
+			}
+
+			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to attest")
+
+	return cmd
 }
 
 func NewInspectCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "inspect",
+	var imageRef string
+
+	cmd := &cobra.Command{
+		Use:   "inspect [image]",
 		Short: "Inspect artifact trust summary",
 		Long:  "Display human-readable trust summary for an artifact",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented yet")
+			// Load config
+			cfg, err := config.Load(configFile)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w\n\nHint: Run 'acc init' to create a configuration file", err)
+			}
+
+			ref := imageRef
+			if len(args) > 0 {
+				ref = args[0]
+			}
+
+			if ref == "" {
+				return fmt.Errorf("image reference required\n\nUsage: acc inspect <image>")
+			}
+
+			// Inspect
+			result, err := inspect.Inspect(cfg, ref, jsonFlag)
+			if err != nil {
+				return err
+			}
+
+			if jsonFlag {
+				fmt.Println(result.FormatJSON())
+			}
+
+			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to inspect")
+
+	return cmd
 }
 
 func NewConfigCmd() *cobra.Command {

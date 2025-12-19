@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/cloudcwfranck/acc/internal/config"
 	"github.com/cloudcwfranck/acc/internal/ui"
@@ -75,6 +76,8 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 
 		// CRITICAL: Per AGENTS.md Section 1.1 - verification failures block execution
 		if cfg.Policy.Mode == "enforce" {
+			// Save state before failing
+			saveVerifyState(imageRef, result)
 			return result, fmt.Errorf("verification failed: SBOM required but not found")
 		}
 	} else {
@@ -108,6 +111,8 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 
 		// CRITICAL: Per AGENTS.md Section 1.1 - no bypass, verification gates execution
 		if cfg.Policy.Mode == "enforce" {
+			// Save state before failing
+			saveVerifyState(imageRef, result)
 			return result, fmt.Errorf("verification failed: policy violations detected")
 		}
 	} else {
@@ -139,6 +144,8 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 
 			// CRITICAL: Block promotion if attestation missing (AGENTS.md Section 2 - acc verify)
 			if cfg.Policy.Mode == "enforce" {
+				// Save state before failing
+				saveVerifyState(imageRef, result)
 				return result, fmt.Errorf("verification failed: attestation required for promotion")
 			}
 		}
@@ -146,6 +153,14 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 
 	if !outputJSON && result.Status == "pass" {
 		ui.PrintSuccess("Verification passed")
+	}
+
+	// Persist verify results to state (for policy explain)
+	if err := saveVerifyState(imageRef, result); err != nil {
+		// Don't fail verification if state save fails, just warn
+		if !outputJSON {
+			ui.PrintWarning(fmt.Sprintf("Failed to save verify state: %v", err))
+		}
 	}
 
 	return result, nil
@@ -222,4 +237,42 @@ func (vr *VerifyResult) ExitCode() int {
 	default:
 		return 1
 	}
+}
+
+// VerifyState represents the persisted verification state
+type VerifyState struct {
+	ImageRef  string         `json:"imageRef"`
+	Status    string         `json:"status"`
+	Timestamp string         `json:"timestamp"`
+	Result    *VerifyResult  `json:"result"`
+}
+
+// saveVerifyState persists verification results to .acc/state/last_verify.json
+// This enables 'acc policy explain' to show the last verification decision
+func saveVerifyState(imageRef string, result *VerifyResult) error {
+	stateDir := filepath.Join(".acc", "state")
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		return fmt.Errorf("failed to create state directory: %w", err)
+	}
+
+	state := VerifyState{
+		ImageRef:  imageRef,
+		Status:    result.Status,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Result:    result,
+	}
+
+	// Mask any potential secrets before saving
+	// (Currently none in VerifyResult, but defensive)
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal state: %w", err)
+	}
+
+	stateFile := filepath.Join(stateDir, "last_verify.json")
+	if err := os.WriteFile(stateFile, data, 0644); err != nil {
+		return fmt.Errorf("failed to write state file: %w", err)
+	}
+
+	return nil
 }

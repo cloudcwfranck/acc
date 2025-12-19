@@ -182,3 +182,75 @@ func TestToYAML(t *testing.T) {
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr)))
 }
+
+func TestGetPolicyForEnv(t *testing.T) {
+	cfg := DefaultConfig("test-project")
+
+	// Test default policy when no environment specified
+	policy := cfg.GetPolicyForEnv("")
+	if policy.Mode != "enforce" {
+		t.Errorf("expected default policy mode 'enforce', got '%s'", policy.Mode)
+	}
+
+	// Test default policy when environment not found
+	policy = cfg.GetPolicyForEnv("nonexistent")
+	if policy.Mode != "enforce" {
+		t.Errorf("expected default policy mode 'enforce', got '%s'", policy.Mode)
+	}
+
+	// Test environment-specific policy
+	warnMode := "warn"
+	cfg.Environments = map[string]EnvConfig{
+		"prod": {
+			Policy: &PolicyConfig{Mode: warnMode},
+		},
+	}
+
+	policy = cfg.GetPolicyForEnv("prod")
+	if policy.Mode != "warn" {
+		t.Errorf("expected env-specific policy mode 'warn', got '%s'", policy.Mode)
+	}
+
+	// Test environment without policy override
+	cfg.Environments["staging"] = EnvConfig{}
+	policy = cfg.GetPolicyForEnv("staging")
+	if policy.Mode != "enforce" {
+		t.Errorf("expected default policy mode 'enforce' for env without override, got '%s'", policy.Mode)
+	}
+}
+
+func TestGetRegistryForEnv(t *testing.T) {
+	cfg := DefaultConfig("test-project")
+
+	// Test default registry when no environment specified
+	registry := cfg.GetRegistryForEnv("")
+	if registry.Default != "localhost:5000" {
+		t.Errorf("expected default registry 'localhost:5000', got '%s'", registry.Default)
+	}
+
+	// Test default registry when environment not found
+	registry = cfg.GetRegistryForEnv("nonexistent")
+	if registry.Default != "localhost:5000" {
+		t.Errorf("expected default registry 'localhost:5000', got '%s'", registry.Default)
+	}
+
+	// Test environment-specific registry
+	prodRegistry := "prod.registry.io"
+	cfg.Environments = map[string]EnvConfig{
+		"prod": {
+			Registry: &RegistryConfig{Default: prodRegistry},
+		},
+	}
+
+	registry = cfg.GetRegistryForEnv("prod")
+	if registry.Default != "prod.registry.io" {
+		t.Errorf("expected env-specific registry 'prod.registry.io', got '%s'", registry.Default)
+	}
+
+	// Test environment without registry override
+	cfg.Environments["staging"] = EnvConfig{}
+	registry = cfg.GetRegistryForEnv("staging")
+	if registry.Default != "localhost:5000" {
+		t.Errorf("expected default registry 'localhost:5000' for env without override, got '%s'", registry.Default)
+	}
+}
