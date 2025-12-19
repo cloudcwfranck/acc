@@ -37,14 +37,14 @@ Download the latest release from [GitHub Releases](https://github.com/cloudcwfra
 ```bash
 # Download the latest release
 VERSION="0.1.0"
-curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc-${VERSION}-linux-amd64.tar.gz"
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc_${VERSION}_linux_amd64.tar.gz"
 
 # Verify checksum (recommended)
 curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/checksums.txt"
 sha256sum -c checksums.txt --ignore-missing
 
 # Extract and install
-tar -xzf "acc-${VERSION}-linux-amd64.tar.gz"
+tar -xzf "acc_${VERSION}_linux_amd64.tar.gz"
 sudo mv acc-linux-amd64 /usr/local/bin/acc
 chmod +x /usr/local/bin/acc
 
@@ -56,14 +56,14 @@ acc version
 ```bash
 # Download the latest release
 VERSION="0.1.0"
-curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc-${VERSION}-darwin-arm64.tar.gz"
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc_${VERSION}_darwin_arm64.tar.gz"
 
 # Verify checksum (recommended)
 curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/checksums.txt"
 shasum -a 256 -c checksums.txt --ignore-missing
 
 # Extract and install
-tar -xzf "acc-${VERSION}-darwin-arm64.tar.gz"
+tar -xzf "acc_${VERSION}_darwin_arm64.tar.gz"
 sudo mv acc-darwin-arm64 /usr/local/bin/acc
 chmod +x /usr/local/bin/acc
 
@@ -73,15 +73,60 @@ acc version
 
 **macOS (Intel):**
 ```bash
-# Use acc-${VERSION}-darwin-amd64.tar.gz instead
+# Use acc_${VERSION}_darwin_amd64.tar.gz instead
+VERSION="0.1.0"
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc_${VERSION}_darwin_amd64.tar.gz"
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/checksums.txt"
+shasum -a 256 -c checksums.txt --ignore-missing
+tar -xzf "acc_${VERSION}_darwin_amd64.tar.gz"
+sudo mv acc-darwin-amd64 /usr/local/bin/acc
+chmod +x /usr/local/bin/acc
+acc version
 ```
 
 **Windows (AMD64):**
 ```powershell
-# Download from GitHub Releases
-# Extract acc-0.1.0-windows-amd64.zip
-# Add to PATH or run directly
+# Download the latest release
+$VERSION = "0.1.0"
+Invoke-WebRequest -Uri "https://github.com/cloudcwfranck/acc/releases/download/v$VERSION/acc_${VERSION}_windows_amd64.zip" -OutFile "acc_${VERSION}_windows_amd64.zip"
+
+# Download checksums for verification
+Invoke-WebRequest -Uri "https://github.com/cloudcwfranck/acc/releases/download/v$VERSION/checksums.txt" -OutFile "checksums.txt"
+
+# Extract
+Expand-Archive -Path "acc_${VERSION}_windows_amd64.zip" -DestinationPath .
+
+# Verify
 .\acc-windows-amd64.exe version
+
+# Add to PATH (optional - requires admin)
+# Move-Item .\acc-windows-amd64.exe C:\Windows\System32\acc.exe
+```
+
+**CI/CD Usage:**
+```bash
+# GitHub Actions / GitLab CI / Jenkins
+VERSION="0.1.0"
+OS="linux"  # or darwin, windows
+ARCH="amd64"  # or arm64
+
+# Download binary
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc_${VERSION}_${OS}_${ARCH}.tar.gz"
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/checksums.txt"
+
+# Verify checksum
+sha256sum -c checksums.txt --ignore-missing || shasum -a 256 -c checksums.txt --ignore-missing
+
+# Extract
+tar -xzf "acc_${VERSION}_${OS}_${ARCH}.tar.gz"
+
+# Make executable and add to PATH
+chmod +x acc-${OS}-${ARCH}
+sudo mv acc-${OS}-${ARCH} /usr/local/bin/acc
+
+# Use in pipeline
+acc version
+acc verify myimage:latest
 ```
 
 #### Option 2: Build from Source
