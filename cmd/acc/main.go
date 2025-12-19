@@ -347,7 +347,7 @@ func NewAttestCmd() *cobra.Command {
 			}
 
 			// Create attestation
-			result, err := attest.Attest(cfg, ref, jsonFlag)
+			result, err := attest.Attest(cfg, ref, version, commit, jsonFlag)
 			if err != nil {
 				return err
 			}
