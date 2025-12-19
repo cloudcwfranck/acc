@@ -16,6 +16,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.1.2] - 2025-01-19
+
+### Fixed - Policy Correctness & Explainability
+
+**CRITICAL: This release fixes correctness and explainability bugs in v0.1.1's policy evaluation.**
+
+**The Bug:**
+v0.1.1 correctly **enforced** policy deny rules (verification fails when denies exist), but **discarded the actual deny rule details** from Rego policies and replaced them with synthetic placeholder violations. This broke explainability, trust, and correctness of JSON/CLI output.
+
+**What Was Broken in v0.1.1:**
+- Custom `deny contains { "rule": "...", "severity": "...", "message": "..." }` objects were parsed but their fields were lost
+- All deny violations showed generic `rule: "policy-deny"`, `severity: "critical"`, `message: "Policy deny rule triggered"`
+- Actual rule names, custom severities, and policy-specific messages were discarded
+- Multiple deny rules sometimes resulted in duplicate violations
+- `acc policy explain` showed the same broken generic violations
+- JSON output was unreliable for CI/GitOps consumption
+
+**What's Fixed in v0.1.2:**
+- ✅ **Structured deny objects propagated verbatim** - Rego deny objects with custom rule, severity, and message fields are now preserved exactly as written
+- ✅ **No synthetic violations** - Removed all hardcoded `rule: "policy-deny"` generation
+- ✅ **No duplicates** - Each deny rule produces exactly one violation
+- ✅ **Faithful CLI output** - Violations display the exact rule names and messages from policy files
+- ✅ **Trustworthy JSON** - `policyResult.violations` array accurately reflects policy semantics
+- ✅ **Single source of truth** - CLI, `--json`, and `acc policy explain` all use the same PolicyResult
+
+**Example:**
+```rego
+# Policy file: .acc/policy/security.rego
+deny contains {
+  "rule": "no-root-user",
+  "severity": "high",
+  "message": "Container runs as root"
+}
+```
+
+**v0.1.1 output (WRONG):**
+```json
+{
+  "rule": "policy-deny",
+  "severity": "critical",
+  "message": "Policy deny rule triggered"
+}
+```
+
+**v0.1.2 output (CORRECT):**
+```json
+{
+  "rule": "no-root-user",
+  "severity": "high",
+  "message": "Container runs as root"
+}
+```
+
+### Impact
+
+**Enforcement was correct in v0.1.1** - deny rules did cause verification to fail as intended. The security model was not broken.
+
+**Explainability was broken in v0.1.1** - users could not see *which* deny rules triggered or *why* verification failed. This made debugging policies nearly impossible.
+
+**Users of v0.1.1 should upgrade to v0.1.2** to restore policy explainability and trust in JSON output.
+
+### Testing
+
+- ✅ Added `TestSingleDenyRuleVerbatim` - Verifies exact field preservation (FAILS on v0.1.1, PASSES on v0.1.2)
+- ✅ Added `TestMultipleDenyRules` - Verifies 3 distinct violations, no duplicates (FAILS on v0.1.1, PASSES on v0.1.2)
+- ✅ Added `TestAllowAllPolicy` - Verifies allow-all policies pass with no violations
+- ✅ Added `TestParseDenyObjects` - Direct parser unit tests
+- ✅ Updated all existing tests to use structured deny objects
+- ✅ All tests pass on v0.1.2
+
 ## [0.1.1] - 2025-01-19
 
 ### Security
