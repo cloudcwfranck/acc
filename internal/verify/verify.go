@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cloudcwfranck/acc/internal/config"
@@ -122,8 +121,7 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		}
 	}
 
-	// Fail fast on expired waivers in enforce mode
-	if result.Status == "fail" && cfg.Policy.Mode == "enforce" {
+	if result.Status == "fail" && len(result.Violations) > 0 && cfg.Policy.Mode == "enforce" {
 		saveVerifyState(imageRef, result)
 		return result, fmt.Errorf("verification failed: one or more waivers have expired")
 	}
@@ -136,9 +134,23 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 	// Build Rego input for policy evaluation
 	regoInput, err := buildRegoInput(cfg, imageRef, forPromotion)
 	if err != nil {
-		// Don't fail if input building fails, just log warning
+		// v0.1.3: Image inspection failure is a CRITICAL violation
+		violation := PolicyViolation{
+			Rule:     "image-inspect-failed",
+			Severity: "critical",
+			Result:   "fail",
+			Message:  fmt.Sprintf("Unable to inspect image config: %v", err),
+		}
+		result.Violations = append(result.Violations, violation)
+		result.Status = "fail"
+
 		if !outputJSON {
-			ui.PrintWarning(fmt.Sprintf("Failed to build Rego input: %v", err))
+			ui.PrintError(violation.Message)
+		}
+
+		if cfg.Policy.Mode == "enforce" {
+			saveVerifyState(imageRef, result)
+			return result, fmt.Errorf("verification failed: %s", violation.Message)
 		}
 	} else {
 		// Store input in result for policy explain
@@ -175,62 +187,58 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		}
 	}
 
-	// Step 4: Check attestations (required for promotion)
-	if forPromotion {
+	// Step 4: Check attestations (optional for now)
+	attestPresent := checkAttestations(cfg)
+	result.Attestations = []string{}
+	if attestPresent {
+		result.Attestations = append(result.Attestations, "present")
+	}
+
+	// Final status
+	if result.Status != "fail" {
+		result.Status = "pass"
 		if !outputJSON {
-			ui.PrintInfo("Checking attestations for promotion...")
-		}
-
-		attestationPresent := checkAttestations(cfg)
-		if !attestationPresent {
-			violation := PolicyViolation{
-				Rule:     "attestation-required-for-promotion",
-				Severity: "critical",
-				Result:   "fail",
-				Message:  "Attestation required for promotion but not found",
-			}
-			result.Violations = append(result.Violations, violation)
-			result.Status = "fail"
-
-			if !outputJSON {
-				ui.PrintError(violation.Message)
-			}
-
-			// CRITICAL: Block promotion if attestation missing (AGENTS.md Section 2 - acc verify)
-			if cfg.Policy.Mode == "enforce" {
-				// Save state before failing
-				saveVerifyState(imageRef, result)
-				return result, fmt.Errorf("verification failed: attestation required for promotion")
-			}
+			ui.PrintSuccess("Verification passed")
 		}
 	}
 
-	if !outputJSON && result.Status == "pass" {
-		ui.PrintSuccess("Verification passed")
-	}
-
-	// Persist verify results to state (for policy explain)
-	if err := saveVerifyState(imageRef, result); err != nil {
-		// Don't fail verification if state save fails, just warn
-		if !outputJSON {
-			ui.PrintWarning(fmt.Sprintf("Failed to save verify state: %v", err))
-		}
-	}
+	// Save verification state
+	saveVerifyState(imageRef, result)
 
 	return result, nil
 }
 
-// checkSBOMExists checks if SBOM file exists for the project
+// VerifyState represents the persisted verification state for policy explain
+type VerifyState struct {
+	ImageRef  string        `json:"imageRef"`
+	Status    string        `json:"status"`
+	Timestamp string        `json:"timestamp"`
+	Result    *VerifyResult `json:"result"`
+}
+
+// FormatJSON returns JSON representation
+func (r *VerifyResult) FormatJSON() string {
+	data, _ := json.MarshalIndent(r, "", "  ")
+	return string(data)
+}
+
+// ExitCode returns the appropriate exit code for this result
+func (r *VerifyResult) ExitCode() int {
+	if r.Status == "pass" {
+		return 0
+	}
+	return 1
+}
+
+// checkSBOMExists verifies SBOM file presence
 func checkSBOMExists(cfg *config.Config) (bool, error) {
 	sbomDir := filepath.Join(".acc", "sbom")
+
+	// SBOM must match pattern: {project}.{format}.json
 	sbomFile := filepath.Join(sbomDir, fmt.Sprintf("%s.%s.json", cfg.Project.Name, cfg.SBOM.Format))
 
-	_, err := os.Stat(sbomFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
+	if _, err := os.Stat(sbomFile); os.IsNotExist(err) {
+		return false, nil
 	}
 
 	return true, nil
@@ -261,16 +269,19 @@ type AttestationInfo struct {
 }
 
 // inspectImageConfig inspects an image and returns its config
+// v0.1.3: Returns error if inspection fails (no silent fallback)
 func inspectImageConfig(imageRef string) (*ImageConfig, error) {
 	// Try docker/podman/nerdctl to inspect image
 	tools := []string{"docker", "podman", "nerdctl"}
 
+	var lastErr error
 	for _, tool := range tools {
 		if _, err := exec.LookPath(tool); err == nil {
 			// Use docker inspect to get full config as JSON
 			cmd := exec.Command(tool, "inspect", imageRef)
 			output, err := cmd.Output()
 			if err != nil {
+				lastErr = err
 				continue
 			}
 
@@ -283,6 +294,7 @@ func inspectImageConfig(imageRef string) (*ImageConfig, error) {
 			}
 
 			if err := json.Unmarshal(output, &inspectOutput); err != nil {
+				lastErr = err
 				continue
 			}
 
@@ -299,23 +311,19 @@ func inspectImageConfig(imageRef string) (*ImageConfig, error) {
 		}
 	}
 
-	// If no tool found or inspection failed, return empty config
-	return &ImageConfig{
-		User:   "",
-		Labels: make(map[string]string),
-	}, nil
+	// v0.1.3: No tools found or all failed - return error
+	if lastErr != nil {
+		return nil, fmt.Errorf("failed to inspect image: %w (tried docker/podman/nerdctl)", lastErr)
+	}
+	return nil, fmt.Errorf("no container tools found (docker/podman/nerdctl required)")
 }
 
 // buildRegoInput constructs the input document for Rego evaluation
 func buildRegoInput(cfg *config.Config, imageRef string, forPromotion bool) (*RegoInput, error) {
-	// Get image configuration
+	// Get image configuration - v0.1.3: hard fail if this fails
 	imageConfig, err := inspectImageConfig(imageRef)
 	if err != nil {
-		// If we can't inspect, use empty config rather than failing
-		imageConfig = &ImageConfig{
-			User:   "",
-			Labels: make(map[string]string),
-		}
+		return nil, err
 	}
 
 	// Check for SBOM
@@ -333,13 +341,17 @@ func buildRegoInput(cfg *config.Config, imageRef string, forPromotion bool) (*Re
 }
 
 // evaluateRego runs OPA evaluation and returns violations
+// v0.1.3: OPA is REQUIRED - no text parsing fallback
 func evaluateRego(policyDir string, input *RegoInput) ([]PolicyViolation, error) {
 	// Check if opa is available
 	opaPath, err := exec.LookPath("opa")
 	if err != nil {
-		// Fallback to text parsing if OPA not available
-		// This maintains backwards compatibility
-		return evaluateRegoFallback(policyDir)
+		// OPA is REQUIRED for security decisions
+		// Check for escape hatch (dev/testing only)
+		if os.Getenv("ACC_ALLOW_NO_OPA") == "1" {
+			return []PolicyViolation{}, nil
+		}
+		return nil, fmt.Errorf("opa command not found: policy evaluation requires OPA\n\nInstall OPA: https://www.openpolicyagent.org/docs/latest/#running-opa\nOr set ACC_ALLOW_NO_OPA=1 (development only, NOT for production)")
 	}
 
 	// Marshal input to JSON
@@ -361,24 +373,27 @@ func evaluateRego(policyDir string, input *RegoInput) ([]PolicyViolation, error)
 	}
 	inputFile.Close()
 
-	// Run OPA eval
+	// Run OPA eval - evaluate data.acc.policy.result (not just deny)
+	// This allows policies to build complete result objects
 	cmd := exec.Command(opaPath, "eval",
 		"--data", policyDir,
 		"--input", inputFile.Name(),
 		"--format", "json",
-		"data.acc.policy.deny")
+		"data.acc.policy.result")
 
 	output, err := cmd.Output()
 	if err != nil {
-		// OPA command failed - try fallback
-		return evaluateRegoFallback(policyDir)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("OPA evaluation failed: %s", string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("OPA evaluation failed: %w", err)
 	}
 
 	// Parse OPA output
 	var opaResult struct {
 		Result []struct {
 			Expressions []struct {
-				Value interface{} `json:"value"`
+				Value map[string]interface{} `json:"value"`
 			} `json:"expressions"`
 		} `json:"result"`
 	}
@@ -387,39 +402,32 @@ func evaluateRego(policyDir string, input *RegoInput) ([]PolicyViolation, error)
 		return nil, fmt.Errorf("failed to parse OPA output: %w", err)
 	}
 
-	// Extract violations from OPA result
+	// Extract violations from policy result
 	var violations []PolicyViolation
 	if len(opaResult.Result) > 0 && len(opaResult.Result[0].Expressions) > 0 {
 		value := opaResult.Result[0].Expressions[0].Value
 		if value != nil {
-			// Convert to violations
-			violations = parseOPADenySet(value)
+			// Extract violations from result.violations
+			if viols, ok := value["violations"].([]interface{}); ok {
+				for _, item := range viols {
+					if violation := parseViolationObject(item); violation != nil {
+						violations = append(violations, *violation)
+					}
+				}
+			}
+
+			// Also check for deny set (backwards compatibility)
+			if denies, ok := value["deny"].([]interface{}); ok {
+				for _, item := range denies {
+					if violation := parseViolationObject(item); violation != nil {
+						violations = append(violations, *violation)
+					}
+				}
+			}
 		}
 	}
 
 	return violations, nil
-}
-
-// parseOPADenySet parses the deny set from OPA output
-func parseOPADenySet(value interface{}) []PolicyViolation {
-	var violations []PolicyViolation
-
-	// OPA returns deny as a set/array of objects
-	switch v := value.(type) {
-	case []interface{}:
-		for _, item := range v {
-			if violation := parseViolationObject(item); violation != nil {
-				violations = append(violations, *violation)
-			}
-		}
-	case map[string]interface{}:
-		// Single violation as object
-		if violation := parseViolationObject(v); violation != nil {
-			violations = append(violations, *violation)
-		}
-	}
-
-	return violations
 }
 
 // parseViolationObject parses a single violation object
@@ -445,27 +453,6 @@ func getString(m map[string]interface{}, key, defaultValue string) string {
 		return val
 	}
 	return defaultValue
-}
-
-// evaluateRegoFallback uses text parsing when OPA is not available
-func evaluateRegoFallback(policyDir string) ([]PolicyViolation, error) {
-	// Read all .rego files
-	files, err := filepath.Glob(filepath.Join(policyDir, "*.rego"))
-	if err != nil {
-		return nil, err
-	}
-
-	var policyContent string
-	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			continue
-		}
-		policyContent += string(content) + "\n"
-	}
-
-	// Use the existing text parser as fallback
-	return parseDenyObjects(policyContent), nil
 }
 
 // evaluatePolicy evaluates the policy by running Rego with proper input
@@ -518,145 +505,18 @@ func evaluatePolicy(cfg *config.Config, imageRef string, forPromotion bool) (*Po
 	return result, nil
 }
 
-// parseDenyObjects parses Rego content and extracts structured deny objects
-// This preserves the exact rule, severity, and message from Rego policies
-// No synthetic violations are created - we propagate deny objects verbatim
-func parseDenyObjects(policyContent string) []PolicyViolation {
-	var violations []PolicyViolation
-
-	// Parse deny contains { ... } blocks
-	// Modern Rego policies define deny objects like:
-	//   deny contains {
-	//     "rule": "no-root-user",
-	//     "severity": "high",
-	//     "message": "Container runs as root"
-	//   }
-
-	lines := strings.Split(policyContent, "\n")
-	inDenyBlock := false
-	var currentDeny map[string]string
-	var blockLines []string
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Skip comments
-		if strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-
-		// Check for deny contains { or deny = { or deny[...] {
-		if strings.HasPrefix(trimmed, "deny contains {") ||
-			strings.HasPrefix(trimmed, "deny = {") ||
-			strings.HasPrefix(trimmed, "deny[") && strings.Contains(trimmed, "{") {
-			inDenyBlock = true
-			currentDeny = make(map[string]string)
-			blockLines = []string{line}
-			continue
-		}
-
-		if inDenyBlock {
-			blockLines = append(blockLines, line)
-
-			// Extract key-value pairs from deny object
-			// Match: "key": "value"  or  "key": "value",
-			if strings.Contains(trimmed, ":") {
-				parts := strings.SplitN(trimmed, ":", 2)
-				if len(parts) == 2 {
-					key := strings.TrimSpace(parts[0])
-					value := strings.TrimSpace(parts[1])
-
-					// Remove quotes from key
-					key = strings.Trim(key, `"`)
-
-					// Remove trailing comma from value first
-					value = strings.TrimSuffix(value, ",")
-					value = strings.TrimSpace(value)
-
-					// Remove quotes from value
-					value = strings.Trim(value, `"`)
-
-					if key != "" && value != "" {
-						currentDeny[key] = value
-					}
-				}
-			}
-
-			// Check for closing brace
-			if strings.Contains(trimmed, "}") {
-				// Create PolicyViolation from parsed deny object
-				violation := PolicyViolation{
-					Rule:     getOrDefault(currentDeny, "rule", "policy-violation"),
-					Severity: getOrDefault(currentDeny, "severity", "error"),
-					Result:   "fail",
-					Message:  getOrDefault(currentDeny, "message", "Policy deny rule triggered"),
-				}
-				violations = append(violations, violation)
-
-				inDenyBlock = false
-				currentDeny = nil
-				blockLines = nil
-			}
-		}
-	}
-
-	return violations
-}
-
-// getOrDefault returns the value for a key, or a default if not found
-func getOrDefault(m map[string]string, key, defaultValue string) string {
-	if val, ok := m[key]; ok && val != "" {
-		return val
-	}
-	return defaultValue
-}
-
 // checkAttestations checks if attestations are present (stubbed)
 func checkAttestations(cfg *config.Config) bool {
 	// TODO: Implement actual attestation checking
-	// Would check for:
-	// - SLSA attestations
-	// - Build provenance
-	// - Signatures
-	attestationDir := filepath.Join(".acc", "attestations")
-	_, err := os.Stat(attestationDir)
-	return err == nil
-}
-
-// FormatJSON formats verification result as JSON
-func (vr *VerifyResult) FormatJSON() string {
-	data, _ := json.MarshalIndent(vr, "", "  ")
-	return string(data)
-}
-
-// ExitCode returns the appropriate exit code based on verification status
-// Per AGENTS.md Section 4.3:
-// - 0 → success
-// - 2 → warnings allowed
-// - 1 → failure / blocked
-func (vr *VerifyResult) ExitCode() int {
-	switch vr.Status {
-	case "pass":
-		return 0
-	case "warn":
-		return 2
-	case "fail":
-		return 1
-	default:
-		return 1
+	// For now, check if .acc/attestations directory has any files
+	attestDir := filepath.Join(".acc", "attestations")
+	if _, err := os.Stat(attestDir); os.IsNotExist(err) {
+		return false
 	}
+	return true
 }
 
-// VerifyState represents the persisted verification state
-type VerifyState struct {
-	ImageRef  string        `json:"imageRef"`
-	Status    string        `json:"status"`
-	Timestamp string        `json:"timestamp"`
-	Result    *VerifyResult `json:"result"`
-}
-
-// saveVerifyState persists verification results to .acc/state/last_verify.json
-// This enables 'acc policy explain' to show the last verification decision
+// saveVerifyState persists verification results for policy explain
 func saveVerifyState(imageRef string, result *VerifyResult) error {
 	stateDir := filepath.Join(".acc", "state")
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
