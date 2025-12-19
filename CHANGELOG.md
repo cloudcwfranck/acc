@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Nothing yet
 
 ### Fixed
-- Nothing yet
+- **acc upgrade backward compatibility** - Fixed upgrade/downgrade to older versions by implementing flexible binary detection that searches for executables matching `acc` or `acc-*` patterns in release archives, supporting both current (`acc`) and legacy (`acc-linux-amd64`) naming conventions
 
 ## [0.1.6] - 2025-12-19
 

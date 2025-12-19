@@ -78,7 +78,10 @@ func Upgrade(opts *UpgradeOptions) (*UpgradeResult, error) {
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch release info: %w", err)
+		if opts.Version != "" && opts.Version != "latest" {
+			return nil, fmt.Errorf("failed to fetch release %s: %w", opts.Version, err)
+		}
+		return nil, fmt.Errorf("failed to fetch latest release: %w", err)
 	}
 
 	result.TargetVersion = release.TagName
@@ -94,7 +97,7 @@ func Upgrade(opts *UpgradeOptions) (*UpgradeResult, error) {
 	assetName := selectAsset(release.TagName, runtime.GOOS, runtime.GOARCH)
 	asset := findAsset(release.Assets, assetName)
 	if asset == nil {
-		return nil, fmt.Errorf("no release asset found for %s/%s (expected: %s)", runtime.GOOS, runtime.GOARCH, assetName)
+		return nil, fmt.Errorf("no release asset found for %s %s/%s (expected: %s)", release.TagName, runtime.GOOS, runtime.GOARCH, assetName)
 	}
 
 	result.AssetName = asset.Name
@@ -150,14 +153,10 @@ func Upgrade(opts *UpgradeOptions) (*UpgradeResult, error) {
 		return nil, fmt.Errorf("failed to extract archive: %w", err)
 	}
 
-	// Find the acc binary in extracted files
-	binaryName := "acc"
-	if runtime.GOOS == "windows" {
-		binaryName = "acc.exe"
-	}
-	extractedBinary := filepath.Join(extractDir, binaryName)
-	if _, err := os.Stat(extractedBinary); os.IsNotExist(err) {
-		return nil, fmt.Errorf("binary not found in archive: %s", binaryName)
+	// Find the acc binary in extracted files (backward-compatible search)
+	extractedBinary, err := findExecutableInDir(extractDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find binary in archive: %w", err)
 	}
 
 	// Install binary (if not disabled for testing)
@@ -430,6 +429,70 @@ func extractZip(archivePath, destDir string) error {
 	}
 
 	return nil
+}
+
+// findExecutableInDir finds the acc executable in a directory
+// Searches for files matching "acc" or "acc-*" (with .exe suffix on Windows)
+// Returns error if 0 or multiple executables are found
+func findExecutableInDir(dir string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+
+	var candidates []string
+	expectedSuffix := ""
+	if runtime.GOOS == "windows" {
+		expectedSuffix = ".exe"
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+
+		// Check if name matches pattern: acc or acc-* (with optional .exe on Windows)
+		nameWithoutExt := strings.TrimSuffix(name, expectedSuffix)
+
+		if nameWithoutExt == "acc" || strings.HasPrefix(nameWithoutExt, "acc-") {
+			// On Windows, must have .exe suffix
+			if runtime.GOOS == "windows" && !strings.HasSuffix(name, ".exe") {
+				continue
+			}
+
+			fullPath := filepath.Join(dir, name)
+
+			// On Unix, verify it's executable
+			if runtime.GOOS != "windows" {
+				info, err := entry.Info()
+				if err != nil {
+					continue
+				}
+				// Check if file has executable bit (owner, group, or other)
+				if info.Mode()&0111 == 0 {
+					continue
+				}
+			}
+
+			candidates = append(candidates, fullPath)
+		}
+	}
+
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("no acc executable found (expected 'acc' or 'acc-*' with executable permissions)")
+	}
+
+	if len(candidates) > 1 {
+		names := make([]string, len(candidates))
+		for i, c := range candidates {
+			names[i] = filepath.Base(c)
+		}
+		return "", fmt.Errorf("multiple acc executables found: %s (expected exactly one)", strings.Join(names, ", "))
+	}
+
+	return candidates[0], nil
 }
 
 // installBinary installs a binary using atomic replacement
