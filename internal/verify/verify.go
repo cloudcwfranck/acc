@@ -246,10 +246,10 @@ func checkSBOMExists(cfg *config.Config) (bool, error) {
 
 // RegoInput represents the input document passed to Rego policy evaluation
 type RegoInput struct {
-	Config      ImageConfig      `json:"config"`
-	SBOM        SBOMInfo         `json:"sbom"`
-	Attestation AttestationInfo  `json:"attestation"`
-	Promotion   bool             `json:"promotion"`
+	Config      ImageConfig     `json:"config"`
+	SBOM        SBOMInfo        `json:"sbom"`
+	Attestation AttestationInfo `json:"attestation"`
+	Promotion   bool            `json:"promotion"`
 }
 
 // ImageConfig contains image configuration fields
