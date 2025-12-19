@@ -1,0 +1,32 @@
+# Binaries
+acc
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Output of go coverage
+*.out
+
+# Build artifacts
+dist/
+bin/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# acc specific
+.acc/cache/
+.acc/locks/
