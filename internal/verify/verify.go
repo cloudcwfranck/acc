@@ -302,9 +302,9 @@ func parseDenyObjects(policyContent string) []PolicyViolation {
 		}
 
 		// Check for deny contains { or deny = { or deny[...] {
-		if (strings.HasPrefix(trimmed, "deny contains {") ||
+		if strings.HasPrefix(trimmed, "deny contains {") ||
 			strings.HasPrefix(trimmed, "deny = {") ||
-			strings.HasPrefix(trimmed, "deny[") && strings.Contains(trimmed, "{")) {
+			strings.HasPrefix(trimmed, "deny[") && strings.Contains(trimmed, "{") {
 			inDenyBlock = true
 			currentDeny = make(map[string]string)
 			blockLines = []string{line}
