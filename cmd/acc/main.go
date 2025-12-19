@@ -11,6 +11,7 @@ import (
 	"github.com/cloudcwfranck/acc/internal/inspect"
 	"github.com/cloudcwfranck/acc/internal/policy"
 	"github.com/cloudcwfranck/acc/internal/promote"
+	"github.com/cloudcwfranck/acc/internal/push"
 	"github.com/cloudcwfranck/acc/internal/runtime"
 	"github.com/cloudcwfranck/acc/internal/ui"
 	"github.com/cloudcwfranck/acc/internal/verify"
@@ -239,14 +240,46 @@ func NewRunCmd() *cobra.Command {
 }
 
 func NewPushCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "push",
+	var imageRef string
+
+	cmd := &cobra.Command{
+		Use:   "push [image]",
 		Short: "Verify and push verified artifacts",
-		Long:  "Verify first, then push only verified artifacts with attestations",
+		Long:  "Push only verified artifacts - verification gates execution",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented yet")
+			// Load config
+			cfg, err := config.Load(configFile)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w\n\nHint: Run 'acc init' to create a configuration file", err)
+			}
+
+			ref := imageRef
+			if len(args) > 0 {
+				ref = args[0]
+			}
+
+			if ref == "" {
+				return fmt.Errorf("image reference required\n\nUsage: acc push <image>")
+			}
+
+			// Push (with verification gate)
+			result, err := push.Push(cfg, ref, jsonFlag)
+			if err != nil {
+				return err
+			}
+
+			if jsonFlag {
+				fmt.Println(result.FormatJSON())
+			}
+
+			return nil
 		},
 	}
+
+	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to push")
+
+	return cmd
 }
 
 func NewPromoteCmd() *cobra.Command {

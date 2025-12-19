@@ -137,9 +137,9 @@ acc run myimage:latest --cap-add NET_ADMIN
 | `run` | Verify and run workload locally with security defaults |
 | `inspect` | Inspect artifact trust summary with verification status |
 | `attest` | Create attestation for artifact with build metadata |
+| `push` | Verify and push verified artifacts to registry |
 | `promote` | Re-verify and promote workload to environment |
 | `policy explain` | Explain last verification decision |
-| `push` | Verify and push verified artifacts (coming soon) |
 | `config` | Get or set configuration values (coming soon) |
 | `login` | Authenticate to registries (coming soon) |
 | `version` | Print version information |
@@ -163,7 +163,9 @@ acc run myimage:latest --cap-add NET_ADMIN
 2. **Verify** → Policy evaluation + SBOM check + state persistence
 3. **Inspect** → Trust summary with verification status
 4. **Attest** → Cryptographic attestation of verification results
-5. **Run/Push/Promote** → Gated by verification
+5. **Push** → Push verified artifacts to registry (verification gated)
+6. **Promote** → Re-verify and promote to environment (verification gated)
+7. **Run** → Execute workload locally (verification gated)
 
 ### Runtime Security Defaults
 
@@ -310,6 +312,43 @@ acc attest myapp:latest --json
 ```
 
 The `verificationResultsHash` is computed using canonical JSON ordering, ensuring that identical verification results always produce the same hash regardless of field order.
+
+### Push verified artifacts
+
+Push images to registries with verification gates:
+
+```bash
+# First, build and verify the image
+acc build --tag registry.io/myapp:v1.0.0
+acc verify registry.io/myapp:v1.0.0
+
+# Push only if verification passed
+acc push registry.io/myapp:v1.0.0
+
+# View push result in JSON
+acc push registry.io/myapp:v1.0.0 --json
+```
+
+**How push works:**
+
+1. **Requires verification state** - `acc push` will fail if `.acc/state/last_verify.json` doesn't exist
+2. **Blocks failed verification** - Cannot push if last verification status is "fail"
+3. **Image reference validation** - Ensures the image matches the last verified digest
+4. **Attestation reference** - If attestation exists, includes reference in output
+5. **Tool detection** - Uses nerdctl, docker, or oras (in that order)
+
+**Push workflow:**
+
+```bash
+# Complete verified push workflow
+acc build --tag myregistry.io/myapp:v1.0.0
+acc verify myregistry.io/myapp:v1.0.0
+acc inspect myregistry.io/myapp:v1.0.0
+acc attest myregistry.io/myapp:v1.0.0
+acc push myregistry.io/myapp:v1.0.0
+```
+
+This ensures that only verified, policy-compliant workloads with attestations can be pushed to registries.
 
 ### Promote workloads to environments
 
