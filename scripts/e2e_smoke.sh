@@ -180,6 +180,10 @@ if [ ! -f "$ACC_BIN" ]; then
     exit 1
 fi
 
+# Convert to absolute path before changing directories
+ACC_BIN=$(realpath "$ACC_BIN")
+log "Resolved ACC Binary: $ACC_BIN"
+
 # Create workdir
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
