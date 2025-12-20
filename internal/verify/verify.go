@@ -72,24 +72,28 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 	result.SBOMPresent = sbomExists
 
 	if !sbomExists {
+		// v0.2.2: Improved SBOM error message with actionable workflow guidance
+		errorMsg := fmt.Sprintf("SBOM is required but not found in .acc/sbom/\n\nWorkflow:\n  1. Build image: docker build -t %s .\n  2. Generate SBOM: syft %s -o spdx-json=.acc/sbom/%s.spdx.json\n  3. Verify: acc verify %s\n\nOr use: acc build -t %s . (generates SBOM automatically)",
+			imageRef, imageRef, cfg.Project.Name, imageRef, imageRef)
+
 		violation := PolicyViolation{
 			Rule:     "sbom-required",
 			Severity: "critical",
 			Result:   "fail",
-			Message:  "SBOM is required but not found",
+			Message:  "SBOM is required but not found in .acc/sbom/",
 		}
 		result.Violations = append(result.Violations, violation)
 		result.Status = "fail"
 
 		if !outputJSON {
-			ui.PrintError(violation.Message)
+			ui.PrintError(errorMsg)
 		}
 
 		// CRITICAL: Per AGENTS.md Section 1.1 - verification failures block execution
 		if cfg.Policy.Mode == "enforce" {
 			// Save state before failing
 			saveVerifyState(imageRef, result, prof)
-			return result, fmt.Errorf("verification failed: SBOM required but not found")
+			return result, fmt.Errorf("verification failed: SBOM required but not found\n\n%s", errorMsg)
 		}
 	} else {
 		if !outputJSON {
@@ -252,26 +256,36 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		}
 	}
 
-	// Determine overall status (only if we didn't already handle error above)
-	// v0.2.1: Use PolicyResult.Allow as source of truth (respects profile filtering)
-	if result.PolicyResult != nil && !result.PolicyResult.Allow {
-		result.Status = "fail"
+	// SINGLE AUTHORITATIVE FINAL GATE - v0.2.2
+	// Status and exit code MUST derive from PolicyResult.Allow (the final decision)
+	// This ensures consistency: if allow:true, status must be "pass" regardless of earlier checks
+	var finalAllow bool
+	if result.PolicyResult != nil {
+		finalAllow = result.PolicyResult.Allow
+	} else {
+		// No policy result means evaluation didn't complete (early failure)
+		finalAllow = false
+	}
+
+	// Set status based on final allow decision
+	if finalAllow {
+		result.Status = "pass"
 		if !outputJSON {
+			ui.PrintSuccess("Verification passed")
+		}
+	} else {
+		result.Status = "fail"
+		if !outputJSON && result.PolicyResult != nil && len(result.PolicyResult.Violations) > 0 {
 			ui.PrintError(fmt.Sprintf("Policy evaluation failed with %d violations:", len(result.PolicyResult.Violations)))
 			for _, v := range result.PolicyResult.Violations {
 				ui.PrintError(fmt.Sprintf("  [%s] %s: %s", v.Severity, v.Rule, v.Message))
 			}
 		}
 
-		// CRITICAL: Per AGENTS.md Section 1.1 - no bypass, verification gates execution
+		// CRITICAL: Per AGENTS.md Section 1.1 - verification gates execution in enforce mode
 		if cfg.Policy.Mode == "enforce" {
-			// Save state before failing
 			saveVerifyState(imageRef, result, prof)
 			return result, fmt.Errorf("verification failed: policy violations detected")
-		}
-	} else if result.Status != "fail" {
-		if !outputJSON {
-			ui.PrintSuccess("Policy evaluation passed")
 		}
 	}
 
@@ -280,14 +294,6 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 	result.Attestations = []string{}
 	if attestPresent {
 		result.Attestations = append(result.Attestations, "present")
-	}
-
-	// Final status
-	if result.Status != "fail" {
-		result.Status = "pass"
-		if !outputJSON {
-			ui.PrintSuccess("Verification passed")
-		}
 	}
 
 	// Save verification state

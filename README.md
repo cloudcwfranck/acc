@@ -254,6 +254,79 @@ acc run myimage:latest --cap-add NET_ADMIN
 
 **Important**: `acc run` always verifies before execution. If verification fails, the workload will NOT run.
 
+## SBOM Workflows
+
+acc requires SBOMs for verification. Choose the workflow that fits your build process:
+
+### Workflow 1: acc build (Recommended)
+
+Use `acc build` for full automation - it builds the image AND generates the SBOM:
+
+```bash
+# Initialize project
+acc init
+
+# Build with SBOM generation (requires syft)
+acc build -t myapp:latest .
+
+# Verify
+acc verify myapp:latest
+```
+
+**Pros**: Single command, automatic SBOM generation
+**Cons**: Requires syft installed
+
+### Workflow 2: Docker + Manual SBOM Generation
+
+If you prefer `docker build` or have existing Dockerfiles, generate SBOM separately:
+
+```bash
+# Initialize project
+acc init
+
+# Build with Docker (standard workflow)
+docker build -t myapp:latest .
+
+# Generate SBOM manually
+mkdir -p .acc/sbom
+syft myapp:latest -o spdx-json=.acc/sbom/$(basename $(pwd)).spdx.json
+
+# Verify
+acc verify myapp:latest
+```
+
+**Required**: The SBOM filename MUST match pattern: `<project-name>.<format>.json`
+**Example**: For project "myapp" with format "spdx": `.acc/sbom/myapp.spdx.json`
+
+### Workflow 3: CI/CD Integration
+
+For CI/CD pipelines, separate build and verify steps:
+
+```bash
+# In CI build stage
+docker build -t myapp:${VERSION} .
+syft myapp:${VERSION} -o spdx-json=.acc/sbom/myapp.spdx.json
+
+# In CI verify stage
+acc verify myapp:${VERSION} --json
+
+# Gate deployment on exit code
+if [ $? -eq 0 ]; then
+  docker push myapp:${VERSION}
+fi
+```
+
+### SBOM Troubleshooting
+
+If `acc verify` reports "SBOM required but not found":
+
+1. **Check SBOM exists**: `ls .acc/sbom/`
+2. **Verify filename matches project**: Should be `<project-name>.spdx.json` or `<project-name>.cyclonedx.json`
+3. **Check project name in acc.yaml**: Must match SBOM filename prefix
+4. **Generate SBOM**: `syft <image> -o spdx-json=.acc/sbom/<project>.spdx.json`
+
+**Note**: acc will detect ANY `.json` file in `.acc/sbom/` as a fallback if exact match not found.
+
 ## Commands
 
 | Command | Description |

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cloudcwfranck/acc/internal/config"
@@ -648,5 +649,127 @@ func TestCheckSBOMExists_Fallback(t *testing.T) {
 
 	if !present {
 		t.Error("SBOM should be detected even when name/format doesn't match exactly")
+	}
+}
+
+// v0.2.2 REGRESSION TEST: Final gate consistency - status MUST match allow
+func TestVerify_FinalGateConsistency(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "acc-final-gate-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	oldDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(oldDir)
+
+	// Create SBOM
+	sbomDir := filepath.Join(".acc", "sbom")
+	os.MkdirAll(sbomDir, 0755)
+	sbomFile := filepath.Join(sbomDir, "final-gate-test.spdx.json")
+	os.WriteFile(sbomFile, []byte("{}"), 0644)
+
+	// Create policy that allows (no violations)
+	policyDir := filepath.Join(".acc", "policy")
+	os.MkdirAll(policyDir, 0755)
+	policyFile := filepath.Join(policyDir, "allow.rego")
+	os.WriteFile(policyFile, []byte("package acc.policy\nresult := {\"allow\": true, \"violations\": []}\n"), 0644)
+
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "final-gate-test"},
+		SBOM:    config.SBOMConfig{Format: "spdx"},
+		Policy:  config.PolicyConfig{Mode: "warn"},
+	}
+
+	os.Setenv("ACC_ALLOW_NO_OPA", "1")
+	defer os.Unsetenv("ACC_ALLOW_NO_OPA")
+
+	result, _ := Verify(cfg, "test:image", false, true, nil)
+
+	if result == nil || result.PolicyResult == nil {
+		t.Fatal("expected result with policyResult")
+	}
+
+	// CRITICAL ASSERTIONS for final gate consistency
+	// Bug: status could be "fail" while allow was true
+	// Fix: Single authoritative final gate ensures status matches allow
+
+	if result.PolicyResult.Allow && result.Status != "pass" {
+		t.Errorf("FINAL GATE VIOLATION: when allow=true, status MUST be 'pass', got %q", result.Status)
+		t.Errorf("PolicyResult: %+v", result.PolicyResult)
+	}
+
+	if !result.PolicyResult.Allow && result.Status != "fail" {
+		t.Errorf("FINAL GATE VIOLATION: when allow=false, status MUST be 'fail', got %q", result.Status)
+	}
+
+	// Exit code must also match
+	expectedExitCode := 0
+	if !result.PolicyResult.Allow {
+		expectedExitCode = 1
+	}
+
+	if result.ExitCode() != expectedExitCode {
+		t.Errorf("exit code mismatch: allow=%v should give exit=%d, got %d",
+			result.PolicyResult.Allow, expectedExitCode, result.ExitCode())
+	}
+}
+
+// v0.2.2 REGRESSION TEST: SBOM missing error should have workflow guidance
+func TestVerify_SBOMMissingErrorMessage(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "acc-sbom-error-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	oldDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(oldDir)
+
+	// NO SBOM directory - SBOM missing
+
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "sbom-error-test"},
+		SBOM:    config.SBOMConfig{Format: "spdx"},
+		Policy:  config.PolicyConfig{Mode: "enforce"},
+	}
+
+	result, err := Verify(cfg, "test:image", false, true, nil)
+
+	if err == nil {
+		t.Error("expected error when SBOM missing in enforce mode")
+	}
+
+	if result == nil {
+		t.Fatal("expected result even on error")
+	}
+
+	// Bug: Error message didn't provide workflow guidance
+	// Fix: Error message now includes step-by-step SBOM generation workflow
+
+	if err != nil {
+		errorMsg := err.Error()
+		if !strings.Contains(errorMsg, "docker build") && !strings.Contains(errorMsg, "syft") && !strings.Contains(errorMsg, "acc build") {
+			t.Errorf("error message should include workflow guidance (docker build, syft, or acc build), got: %s", errorMsg)
+		}
+	}
+
+	// Check that violation exists
+	if len(result.Violations) == 0 {
+		t.Error("expected SBOM violation when SBOM missing")
+	}
+
+	found := false
+	for _, v := range result.Violations {
+		if v.Rule == "sbom-required" {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Error("expected sbom-required violation")
 	}
 }
