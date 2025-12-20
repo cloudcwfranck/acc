@@ -253,7 +253,8 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 	}
 
 	// Determine overall status (only if we didn't already handle error above)
-	if result.PolicyResult != nil && len(result.PolicyResult.Violations) > 0 {
+	// v0.2.1: Use PolicyResult.Allow as source of truth (respects profile filtering)
+	if result.PolicyResult != nil && !result.PolicyResult.Allow {
 		result.Status = "fail"
 		if !outputJSON {
 			ui.PrintError(fmt.Sprintf("Policy evaluation failed with %d violations:", len(result.PolicyResult.Violations)))
@@ -329,17 +330,34 @@ func (r *VerifyResult) ExitCode() int {
 }
 
 // checkSBOMExists verifies SBOM file presence
+// v0.2.1: Improved to check for exact match first, then any SBOM file
 func checkSBOMExists(cfg *config.Config) (bool, error) {
 	sbomDir := filepath.Join(".acc", "sbom")
 
-	// SBOM must match pattern: {project}.{format}.json
+	// First, check for exact match: {project}.{format}.json
 	sbomFile := filepath.Join(sbomDir, fmt.Sprintf("%s.%s.json", cfg.Project.Name, cfg.SBOM.Format))
-
-	if _, err := os.Stat(sbomFile); os.IsNotExist(err) {
-		return false, nil
+	if _, err := os.Stat(sbomFile); err == nil {
+		return true, nil
 	}
 
-	return true, nil
+	// v0.2.1: Fallback - check for any SBOM file in the directory
+	// This handles cases where format might differ or project name mismatch
+	entries, err := os.ReadDir(sbomDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	// Look for any .json file in SBOM directory
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // RegoInput represents the input document passed to Rego policy evaluation

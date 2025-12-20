@@ -53,7 +53,11 @@ func Load(nameOrPath string) (*Profile, error) {
 	data, err := os.ReadFile(profilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("profile not found: %s", profilePath)
+			// v0.2.1: Clearer error message with remediation
+			if strings.Contains(nameOrPath, "/") || strings.HasSuffix(nameOrPath, ".yaml") || strings.HasSuffix(nameOrPath, ".yml") {
+				return nil, fmt.Errorf("profile not found: %s\n\nRemediation:\n  - Check that the file exists\n  - Verify the path is correct", profilePath)
+			}
+			return nil, fmt.Errorf("profile not found: %q at %s\n\nRemediation:\n  - Create profile in .acc/profiles/ directory\n  - Or use explicit path: --profile ./path/to/profile.yaml\n  - Run 'acc init' if .acc/profiles/ directory is missing", nameOrPath, profilePath)
 		}
 		return nil, fmt.Errorf("failed to read profile %s: %w", profilePath, err)
 	}

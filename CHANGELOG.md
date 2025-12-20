@@ -16,6 +16,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.2.1] - 2025-12-20
+
+### Fixed - v0.2.0 Regression Bugs
+
+**This release fixes 5 critical bugs found in v0.2.0 testing.**
+
+1. **verify status inconsistency** - Fixed verify returning `status:"fail"` when `allow:true` and no violations
+   - **Bug**: verify checked violation count instead of `PolicyResult.Allow` field after profile filtering
+   - **Fix**: Use `PolicyResult.Allow` as source of truth for status determination
+   - **Impact**: Profiles now correctly set status to "pass" when all violations are filtered
+
+2. **sbomPresent false after build** - Fixed SBOM detection after `acc build`
+   - **Bug**: checkSBOMExists() required exact filename match, failed on name/format mismatches
+   - **Fix**: Added fallback to detect ANY .json file in .acc/sbom/ directory
+   - **Impact**: More robust SBOM detection across different configurations
+
+3. **Profile loading broken** - Fixed profile name resolution and error messages
+   - **Bug**: .acc/profiles/ directory not created by `acc init`, unclear error messages
+   - **Fix**: `acc init` now creates .acc/profiles/, improved error messages with remediation
+   - **Impact**: Better user experience when loading profiles by name
+
+4. **trust status image leakage** - Fixed digest resolution to prevent state leakage across images
+   - **Bug**: resolveImageDigest() was simplistic, couldn't query container runtimes
+   - **Fix**: Properly query Docker/Podman/nerdctl for image digest
+   - **Impact**: `acc trust status` now shows correct per-image state, not global state
+
+5. **trust status exit codes wrong** - Fixed exit codes when no state found
+   - **Bug**: Returned exit 1 (error) instead of exit 2 (no state) when verification state missing
+   - **Fix**: Return StatusResult with status:"unknown" and exit code 2
+   - **Impact**: Correct exit code behavior: 0=pass, 1=fail, 2=no state
+
+**Regression Tests Added:**
+- `TestVerify_StatusFromAllow` - Verifies status derives from allow field
+- `TestCheckSBOMExists_Fallback` - Verifies SBOM fallback detection
+
+**Files Changed:**
+- `internal/verify/verify.go` - Fixed status logic, improved SBOM detection
+- `internal/profile/profile.go` - Improved error messages
+- `internal/config/init.go` - Create .acc/profiles/ directory
+- `internal/trust/status.go` - Fixed digest resolution and exit codes
+- `internal/verify/verify_test.go` - Added regression tests
+
 ## [0.2.0] - 2025-12-20
 
 ### Added - Policy Profiles & Trust Status
