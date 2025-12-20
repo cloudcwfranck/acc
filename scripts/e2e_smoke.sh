@@ -79,6 +79,7 @@ trap cleanup EXIT
 # ============================================================================
 
 # Assert that a command succeeds
+# Uses set +e pattern to safely capture exit codes without SC2317 warnings
 assert_success() {
     local description="$1"
     shift
@@ -87,8 +88,10 @@ assert_success() {
     local output
     local exit_code
 
+    set +e
     output=$("$@" 2>&1)
     exit_code=$?
+    set -e
 
     if [ $exit_code -eq 0 ]; then
         log_success "$description"
@@ -102,6 +105,7 @@ assert_success() {
 }
 
 # Assert that a command fails with specific exit code
+# Uses set +e pattern to safely capture exit codes without SC2317 warnings
 assert_failure() {
     local expected_exit=$1
     local description="$2"
@@ -111,8 +115,10 @@ assert_failure() {
     local output
     local exit_code
 
+    set +e
     output=$("$@" 2>&1)
     exit_code=$?
+    set -e
 
     if [ $exit_code -eq "$expected_exit" ]; then
         log_success "$description (exit $exit_code as expected)"
@@ -171,7 +177,7 @@ log "Log File: $LOGFILE"
 log_section "Verifying Prerequisites"
 for tool in "${REQUIRED_TOOLS[@]}"; do
     need "$tool"
-    log "✓ $tool: $(command -v $tool)"
+    log "✓ $tool: $(command -v "$tool")"
 done
 
 # Verify acc binary exists

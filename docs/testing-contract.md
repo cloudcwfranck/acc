@@ -14,84 +14,6 @@ The Testing Contract serves as:
 
 ---
 
-## ⚠️ Known Regressions (v0.2.3)
-
-**Status**: Tier 1 E2E tests are FAILING due to regressions. PRs are BLOCKED until these are fixed.
-
-### Regression 1: verify exit code does not match status field
-
-**Contract Violation**:
-- **Expected**: `acc verify` with `status:"fail"` MUST exit 1
-- **Actual**: Exits 0 even when `status:"fail"` and `policyResult.allow:false`
-
-**Example**:
-```bash
-$ acc verify demo-app:root --json
-{
-  "status": "fail",
-  "policyResult": {
-    "allow": false,
-    "violations": [{"rule": "no-root-user", ...}]
-  }
-}
-$ echo $?
-0  # BUG: Should be 1
-```
-
-**Root Cause**: v0.2.2 Single Authoritative Final Gate (commit 7f4e3d7) fixed `status` field to match `policyResult.allow`, but did not update exit code logic in `internal/verify/verify.go:255-286`.
-
-**Impact**:
-- ❌ Tier 1 TEST 3 fails
-- ❌ CI/CD pipelines using exit codes for gating will not block failing images
-- ❌ Breaks Testing Contract guarantee: "Exit 1: Verification failed (status: fail)"
-
-**Test**: `scripts/e2e_smoke.sh` TEST 3 - "acc verify demo-app:root"
-
-**Issue**: [Create issue: "verify should exit 1 when status:fail"]
-
-**Fix Required**: Update verify.go to return error when `finalAllow == false`
-
----
-
-### Regression 2: attest does not detect image mismatch
-
-**Contract Violation**:
-- **Expected**: `acc attest <image-A>` after `acc verify <image-B>` MUST fail (mismatch)
-- **Actual**: Succeeds and creates attestation for wrong image
-
-**Example**:
-```bash
-$ acc verify demo-app:root     # Verify image-root
-$ acc attest demo-app:ok        # Try to attest image-ok (different!)
-✔ Creating attestation...       # BUG: Should fail with mismatch error
-$ echo $?
-0  # BUG: Should be non-zero
-```
-
-**Root Cause**: Attest UX contract (v0.2.x) requires mismatch detection, but `internal/attest/attest.go` does not compare requested image digest with last verified image digest from `.acc/state/verify/*.json`.
-
-**Impact**:
-- ❌ Tier 1 TEST 5 fails
-- ❌ Attestations can be created for unverified images
-- ❌ Breaks supply chain integrity guarantee
-- ❌ Security risk: attestation for image-A can be applied to image-B
-
-**Test**: `scripts/e2e_smoke.sh` TEST 5 - "Attest UX Checks"
-
-**Issue**: [Create issue: "attest should fail on image mismatch"]
-
-**Fix Required**: Add image digest comparison in attest.go before creating attestation
-
----
-
-**Resolution Status**:
-- [ ] Regression 1: verify exit code - NOT FIXED
-- [ ] Regression 2: attest mismatch detection - NOT FIXED
-
-**Until fixed, Tier 1 tests will FAIL and block PRs.**
-
----
-
 ## Test Tiers
 
 ### Tier 0: CLI Help Matrix (BLOCKS PRs)
@@ -134,10 +56,15 @@ acc login --help     # May return "not implemented" with non-zero exit
 ```
 
 **Not-Implemented Commands**:
-- If a command is not implemented, it MUST either:
-  - Show help text and exit 0 (stub implementation)
-  - Return clear error message containing "not implemented" or "coming soon"
-  - Use stable non-zero exit code (document the code if different from 1)
+- `acc config --help`: Currently behaves as help-only stub (exit 0, shows help text)
+- `acc login --help`: Currently behaves as help-only stub (exit 0, shows help text)
+
+**Contract for Stub Commands**:
+- Stub commands MAY return help text and exit 0 (indicates future implementation planned)
+- Stub commands MAY return "not implemented" error with non-zero exit (indicates not yet available)
+- Tier 0 tests verify command exists and either shows help OR clear "not implemented" message
+- Changing from stub (exit 0) to error (exit 1) is a MINOR version bump (more restrictive)
+- Implementing full functionality is a MINOR version bump (backward compatible)
 
 **Breaking Changes**:
 - Removing a command is a MAJOR version bump
@@ -428,6 +355,82 @@ acc run <image> [-- command args...]
 - **Exit 2**: Operation could not complete (missing prerequisites, no state)
 
 **Regression Detection**: Tests enforce exit codes match JSON output. Mismatches are CRITICAL BUGS.
+
+---
+
+### Test Script Implementation Patterns
+
+**Script Quality Standards**: All test scripts follow ShellCheck best practices to ensure robustness and portability.
+
+#### Array-Based Command Invocation
+
+Test scripts use array-based command execution to avoid word-splitting issues (ShellCheck SC2086):
+
+```bash
+# cli_help_matrix.sh pattern for dynamic commands
+test_help_command() {
+    local cmd_args="$1"
+
+    # Build command array
+    local cmd=( "$ACC_BIN" )
+    # shellcheck disable=SC2206
+    cmd+=( $cmd_args )  # Intentional word splitting
+
+    # Execute safely
+    set +e
+    output=$("${cmd[@]}" 2>&1)
+    exit_code=$?
+    set -e
+}
+```
+
+#### Safe Exit Code Capture
+
+All helper functions use `set +e` / `set -e` pattern to capture exit codes without triggering ShellCheck SC2317 (unreachable code) warnings:
+
+```bash
+assert_success() {
+    local description="$1"
+    shift
+
+    local output
+    local exit_code
+
+    # Disable errexit to capture actual exit code
+    set +e
+    output=$("$@" 2>&1)
+    exit_code=$?
+    set -e  # Re-enable errexit
+
+    if [ $exit_code -eq 0 ]; then
+        log_success "$description"
+    else
+        log_error "$description (exit code: $exit_code)"
+    fi
+}
+```
+
+**Why This Pattern**:
+- Using `|| true` masks actual exit codes (`$?` always captures 0)
+- `set +e` allows command to fail without terminating script
+- `$?` correctly captures the command's exit code
+- `set -e` restores fail-fast behavior for subsequent commands
+
+#### Variable Quoting
+
+All variable references in command invocations are properly quoted to prevent word splitting:
+
+```bash
+# Correct: Quote variables in command substitution
+log "✓ $tool: $(command -v "$tool")"
+
+# Correct: Variables passed through function parameters
+assert_success "description" "$ACC_BIN" verify --json "$image"
+```
+
+**ShellCheck Compliance**: Test scripts aim for zero ShellCheck warnings. Any suppressions (`# shellcheck disable=SCxxxx`) are documented with justification.
+
+---
 
 ### JSON Output Stability
 

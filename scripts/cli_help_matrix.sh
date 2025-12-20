@@ -42,48 +42,65 @@ log_section() {
 # ============================================================================
 
 # Test that a command shows help and exits with code 0
+# Uses array-based invocation to avoid SC2086 word-splitting warnings
 test_help_command() {
     local cmd_args="$1"
     local description="$2"
 
     log "Testing: $ACC_BIN $cmd_args"
 
-    if output=$($ACC_BIN $cmd_args 2>&1); then
-        exit_code=$?
-        if [ $exit_code -eq 0 ]; then
-            if [ -n "$output" ]; then
-                log_success "$description: exit 0, non-empty output"
-                return 0
-            else
-                log_error "$description: exit 0 but empty output"
-                return 1
-            fi
+    # Build command array to avoid word splitting (SC2086)
+    local cmd=( "$ACC_BIN" )
+    # shellcheck disable=SC2206
+    cmd+=( $cmd_args )  # Intentional word splitting to parse args
+
+    local output
+    local exit_code
+    set +e
+    output=$("${cmd[@]}" 2>&1)
+    exit_code=$?
+    set -e
+
+    if [ $exit_code -eq 0 ]; then
+        if [ -n "$output" ]; then
+            log_success "$description: exit 0, non-empty output"
+            return 0
         else
-            log_error "$description: exit code $exit_code (expected 0)"
-            echo "$output" >> "$LOGFILE"
+            log_error "$description: exit 0 but empty output"
             return 1
         fi
     else
-        exit_code=$?
         log_error "$description: exit code $exit_code (expected 0)"
+        echo "$output" >> "$LOGFILE"
         return 1
     fi
 }
 
 # Test that a not-implemented command returns stable error
+# Uses array-based invocation to avoid SC2086 word-splitting warnings
 test_not_implemented() {
     local cmd_args="$1"
     local description="$2"
 
     log "Testing not-implemented: $ACC_BIN $cmd_args"
 
-    if output=$($ACC_BIN $cmd_args 2>&1); then
-        exit_code=$?
+    # Build command array to avoid word splitting (SC2086)
+    local cmd=( "$ACC_BIN" )
+    # shellcheck disable=SC2206
+    cmd+=( $cmd_args )  # Intentional word splitting to parse args
+
+    local output
+    local exit_code
+    set +e
+    output=$("${cmd[@]}" 2>&1)
+    exit_code=$?
+    set -e
+
+    if [ $exit_code -eq 0 ]; then
         # If it returns 0, it might be implemented
         log "⚠️  $description: returned exit 0 (might be implemented, or help text)"
         return 0
     else
-        exit_code=$?
         if echo "$output" | grep -qiE "(not implemented|coming soon)"; then
             log_success "$description: clear not-implemented message, exit $exit_code"
             return 0

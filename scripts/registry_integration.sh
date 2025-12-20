@@ -128,7 +128,7 @@ log "Log File: $LOGFILE"
 log_section "Verifying Prerequisites"
 for tool in "${REQUIRED_TOOLS[@]}"; do
     need "$tool"
-    log "✓ $tool: $(command -v $tool)"
+    log "✓ $tool: $(command -v "$tool")"
 done
 
 # Verify acc binary exists
