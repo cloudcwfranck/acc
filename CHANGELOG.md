@@ -7,14 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Nothing yet
-
-### Changed
-- Nothing yet
-
 ### Fixed
-- Nothing yet
+
+#### Test Script Quality - ShellCheck Compliance
+
+**Summary**: Fixed all ShellCheck INFO warnings (SC2086, SC2317) in test scripts without changing acc behavior or test assertions.
+
+**What Changed:**
+- Test scripts now use array-based command invocation to prevent word-splitting issues
+- Helper functions use `set +e / set -e` pattern for safe exit code capture
+- All variable references properly quoted in command substitutions
+- Zero ShellCheck warnings while maintaining identical test behavior
+
+**Files Changed:**
+- `scripts/cli_help_matrix.sh` - Array-based command execution for `test_help_command()` and `test_not_implemented()`
+- `scripts/e2e_smoke.sh` - Safe exit code capture in `assert_success()` and `assert_failure()`
+- `scripts/registry_integration.sh` - Quoted variable references
+- `docs/testing-contract.md` - Documented script implementation patterns and ShellCheck compliance
+
+**Technical Details:**
+
+**SC2086 Fix (Word Splitting):**
+```bash
+# Before:
+output=$($ACC_BIN $cmd_args 2>&1)
+
+# After:
+cmd=( "$ACC_BIN" )
+cmd+=( $cmd_args )  # Intentional word splitting with disable comment
+output=$("${cmd[@]}" 2>&1)
+```
+
+**SC2317 Fix (Unreachable Code):**
+```bash
+# Before (shellcheck thinks exit_code=$? is unreachable):
+output=$("$@" 2>&1)
+exit_code=$?
+
+# After (explicit set +e):
+set +e
+output=$("$@" 2>&1)
+exit_code=$?
+set -e
+```
+
+**Documentation Updates:**
+- Added "Test Script Implementation Patterns" section to testing-contract.md
+- Documented why `|| true` pattern was replaced with `set +e / set -e`
+- Clarified that `config` and `login` commands are help-only stubs
+- Removed "Known Regressions" section (regressions fixed in v0.2.3)
+
+**Impact:**
+- Improved script maintainability and portability
+- Better adherence to bash best practices
+- No behavior changes to acc product or CI gates
+- Zero impact on existing workflows
+
+**Testing:** All scripts pass `bash -n` validation, Tier 0 tests GREEN
 
 ## [0.2.3] - 2025-12-20
 

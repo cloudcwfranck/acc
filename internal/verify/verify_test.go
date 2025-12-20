@@ -455,9 +455,11 @@ func TestVerify_ReturnsStructuredFailure_WhenOPAIsMissing(t *testing.T) {
 		t.Error("Expected non-zero exit code for failed verification")
 	}
 
-	// Verify should not return error in warn mode
-	if err != nil {
-		t.Errorf("Expected no error in warn mode, got: %v", err)
+	// v0.2.3 Testing Contract: Verify MUST return error when status is "fail"
+	// This ensures exit code matches status field regardless of policy mode
+	// Policy mode controls downstream blocking (push/run), not verify exit code
+	if err == nil {
+		t.Error("Expected error when status is 'fail', even in warn mode (Testing Contract requirement)")
 	}
 }
 

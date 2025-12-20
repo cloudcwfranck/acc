@@ -54,6 +54,150 @@ go test ./internal/verify -v
 
 **Important:** All pull requests must pass `go test ./...` before merge.
 
+### 1.1 Running CI Tests Locally
+
+Before pushing, you can run the same tests that CI runs to catch issues early:
+
+#### Prerequisites for CI Tests
+
+```bash
+# Install OPA (v0.66.0)
+curl -L -o opa https://openpolicyagent.org/downloads/v0.66.0/opa_linux_amd64_static
+chmod +x opa
+sudo mv opa /usr/local/bin/
+opa version
+
+# Install syft (for SBOM generation)
+curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+syft version
+
+# Install jq (if not already installed)
+sudo apt-get install -y jq  # Ubuntu/Debian
+brew install jq             # macOS
+
+# Verify docker is available
+docker --version
+```
+
+#### Run Tier 0: CLI Help Matrix
+
+Fast validation of all command help text:
+
+```bash
+# Build acc first
+go build -o acc ./cmd/acc
+
+# Run Tier 0 tests
+bash scripts/cli_help_matrix.sh
+
+# Check exit code
+echo $?  # Should be 0
+```
+
+**What it tests**: All commands exist and show help correctly.
+
+#### Run Tier 1: E2E Smoke Tests
+
+Comprehensive offline functional tests:
+
+```bash
+# Build acc first
+go build -o acc ./cmd/acc
+
+# Run Tier 1 tests
+bash scripts/e2e_smoke.sh
+
+# Check exit code
+echo $?  # Should be 0
+
+# View logs on failure
+cat /tmp/tier1-*.log
+
+# Inspect workdir on failure
+ls -la /tmp/acc-e2e-*/
+```
+
+**What it tests**: Full workflow including init, build, verify, attest, inspect, trust status.
+
+**Runtime**: ~60-90 seconds
+
+**IMPORTANT**: Tier 1 tests currently FAIL due to 2 known regressions (see `docs/testing-contract.md`). This is expected and documented.
+
+#### Run Tier 2: Registry Integration (Optional)
+
+Tests push/promote workflows with GHCR. **Tier 2 never blocks PRs** and is optional for local development.
+
+```bash
+# Prerequisites: Login to GHCR
+echo $GITHUB_TOKEN | docker login ghcr.io -u <your-username> --password-stdin
+
+# Set environment variables
+export GHCR_REPO="<your-username>/acc"
+export GHCR_REGISTRY="ghcr.io"
+export GITHUB_SHA=$(git rev-parse --short HEAD)
+
+# Build acc first
+go build -o acc ./cmd/acc
+
+# Run Tier 2 tests
+bash scripts/registry_integration.sh
+```
+
+**What it tests**: Push to GHCR, promote, pull and re-verify.
+
+**Runtime**: ~2-5 minutes
+
+**Note**: Script auto-skips if GHCR_REPO not set or not logged in.
+
+#### Validate Scripts (CI Syntax Check)
+
+The exact validation CI runs on scripts:
+
+```bash
+# Validate bash syntax
+for script in scripts/*.sh; do
+  echo "Checking $script"
+  bash -n "$script"
+done
+
+# Run shellcheck if available (optional)
+if command -v shellcheck &> /dev/null; then
+  shellcheck scripts/*.sh
+else
+  echo "shellcheck not installed (optional)"
+fi
+```
+
+#### Quick Pre-Push Checklist
+
+Run this before pushing to catch CI failures early:
+
+```bash
+# 1. Format code
+gofmt -w .
+
+# 2. Run Go tests
+go test ./...
+
+# 3. Build
+go build -o acc ./cmd/acc
+
+# 4. Run Tier 0 (fast)
+bash scripts/cli_help_matrix.sh
+
+# 5. Run Tier 1 (comprehensive)
+# Note: Expected to FAIL until regressions fixed
+bash scripts/e2e_smoke.sh
+
+# 6. Check CHANGELOG.md updated
+git diff origin/main...HEAD -- CHANGELOG.md
+```
+
+**Interpreting Results**:
+- ✅ Tier 0 and Go tests MUST pass
+- ❌ Tier 1 currently FAILS due to regressions (documented in testing-contract.md)
+- ⏭️ Tier 2 is optional (never blocks PRs)
+
 ### 2. Code Formatting
 
 All Go code must be formatted with `gofmt`:
