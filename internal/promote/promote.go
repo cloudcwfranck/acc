@@ -46,7 +46,7 @@ func Promote(cfg *config.Config, imageRef, targetEnv string, outputJSON bool) (*
 	tempCfg.Policy = envPolicy
 
 	// Verify with promotion flag set (requires attestations)
-	verifyResult, err := verify.Verify(&tempCfg, imageRef, true, outputJSON)
+	verifyResult, err := verify.Verify(&tempCfg, imageRef, true, outputJSON, nil)
 	if err != nil {
 		// RED OUTPUT MEANS STOP (AGENTS.md Section 0)
 		if !outputJSON {

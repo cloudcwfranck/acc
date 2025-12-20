@@ -16,6 +16,153 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.2.0] - 2025-12-20
+
+### Added - Policy Profiles & Trust Status
+
+**This release introduces Policy Profiles, an opt-in configuration layer for post-evaluation violation filtering.**
+
+**What's New:**
+
+- ✅ **Policy Profiles** - YAML-based configuration for filtering violations by rule name or severity
+- ✅ **`--profile` flag** - `acc verify --profile <name|path>` for profile-based enforcement
+- ✅ **`acc trust status` command** - View verification state with profile and violation details
+- ✅ **Post-evaluation filtering** - Profiles filter results AFTER OPA runs, not during
+- ✅ **Warning display** - Convert ignored violations to warnings with `warnings.show: true`
+- ✅ **Example profiles** - Baseline (dev) and strict (prod) profiles in `.acc/profiles/`
+- ✅ **Full backward compatibility** - v0.1.x behavior unchanged when `--profile` not used
+
+**Profile Schema (v1):**
+
+```yaml
+schemaVersion: 1
+name: baseline
+description: Baseline enforcement profile
+
+# Only enforce these policies (allowlist)
+policies:
+  allow:
+    - no-root-user
+    - no-latest-tag
+
+# Ignore these violations
+violations:
+  ignore:
+    - informational  # By severity
+    - low            # By severity
+    - missing-healthcheck  # By rule name
+
+# Warning display
+warnings:
+  show: true  # Display ignored violations as warnings
+```
+
+**Usage Examples:**
+
+```bash
+# Verify with profile (name lookup in .acc/profiles/)
+acc verify myapp:latest --profile baseline
+
+# Verify with profile (explicit path)
+acc verify myapp:latest --profile ./custom.yaml
+
+# View trust status with profile information
+acc trust status myapp:latest
+
+# Output:
+# Status:         ✓ PASS
+# Profile:        baseline
+# Warnings (2 ignored):
+#   [low] missing-healthcheck: Container lacks health check
+```
+
+**New Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `acc trust status [image]` | View trust status with profile and violation details |
+
+**Trust Status Exit Codes:**
+
+- `0` - Verified (pass)
+- `1` - Not verified (fail)
+- `2` - No verification state found
+
+**Architecture:**
+
+**Phase 1 - Core Profile Infrastructure:**
+- `internal/profile/profile.go` - Profile types, YAML parsing, validation
+- Schema version 1 enforcement with strict unknown field rejection
+- Profile loading from name (`.acc/profiles/<name>.yaml`) or explicit path
+- 12 unit tests
+
+**Phase 2 - Decision Gating:**
+- `internal/profile/resolver.go` - Post-evaluation violation filtering
+- Allow list filtering (only enforce specified policies)
+- Ignore list filtering (by severity or rule name)
+- Warning categorization with `warnings.show` support
+- 9 unit tests
+
+**Phase 3 - CLI Integration:**
+- `acc verify --profile <name|path>` flag
+- Profile loading errors with clear remediation messages
+- Backward compatibility: `nil` profile parameter for v0.1.x callers
+- Warning output to stderr when `warnings.show: true`
+
+**Phase 4 - Trust Status:**
+- `acc trust status` command with digest-scoped state loading
+- Displays profile used, active violations, and warnings separately
+- JSON output with `--json` flag
+- Reads from `.acc/state/verify/<digest>.json` or global state
+
+**Phase 5 - Documentation:**
+- Comprehensive README section with examples
+- Example profiles: baseline (dev), strict (prod)
+- Migration guide from v0.1.x
+- CHANGELOG entry
+
+**Non-Goals (Explicitly Not Implemented):**
+
+- ❌ Profile auto-discovery or defaults
+- ❌ Modifying OPA evaluation or Rego policies
+- ❌ Pre-evaluation policy filtering
+- ❌ Profile inheritance or composition
+- ❌ Remote profile fetching
+- ❌ Profile signing/verification
+
+**Backward Compatibility:**
+
+- **v0.1.x behavior preserved** - `acc verify` without `--profile` is identical to v0.1.8
+- **JSON output unchanged** - Same JSON structure when profile not used
+- **No breaking changes** - All existing commands and flags work unchanged
+- **State format extended** - Added optional `profileUsed` field to verification state
+
+**Migration:**
+
+No changes required. Profiles are opt-in:
+
+```bash
+# Continue using v0.1.x behavior
+acc verify myapp:latest
+
+# Adopt profiles when ready
+acc verify myapp:latest --profile baseline
+```
+
+**Testing:**
+
+- ✅ 21 unit tests in `internal/profile/` (profile + resolver)
+- ✅ Full backward compatibility verified
+- ✅ Profile loading errors tested (missing file, invalid YAML, unknown fields)
+- ✅ Violation filtering tested (allow list, ignore by severity/rule, warnings)
+
+**Impact:**
+
+- **Environment-specific enforcement** - Different profiles for dev/staging/prod
+- **Gradual adoption** - Suppress low-priority violations without policy changes
+- **Warning-driven workflows** - See violations without blocking
+- **No migration burden** - Opt-in only, no forced changes
+
 ## [0.1.8] - 2025-12-19
 
 ### Added - Interactive Terminal Walkthrough

@@ -199,7 +199,7 @@ func TestImageInspectFailureCreatesViolation(t *testing.T) {
 	defer os.Unsetenv("ACC_ALLOW_NO_OPA")
 
 	// Verify with non-existent image (will fail inspection)
-	result, err := Verify(cfg, "nonexistent:image", false, true)
+	result, err := Verify(cfg, "nonexistent:image", false, true, nil)
 
 	// Should fail with image-inspect-failed violation
 	if err == nil {
@@ -362,7 +362,7 @@ func TestVerify_NoPanic_WhenOPAIsMissing(t *testing.T) {
 	defer os.Chdir(origDir)
 
 	// This should NOT panic
-	result, _ := Verify(cfg, "test:image", false, true)
+	result, _ := Verify(cfg, "test:image", false, true, nil)
 
 	// Result should not be nil
 	if result == nil {
@@ -409,7 +409,7 @@ func TestVerify_ReturnsStructuredFailure_WhenOPAIsMissing(t *testing.T) {
 	os.Chdir(tmpDir)
 	defer os.Chdir(origDir)
 
-	result, err := Verify(cfg, "test:image", false, true)
+	result, err := Verify(cfg, "test:image", false, true, nil)
 
 	// Should return valid result (not nil)
 	if result == nil {
@@ -517,7 +517,7 @@ func TestVerify_WritesState_OnFailure(t *testing.T) {
 	defer os.Chdir(origDir)
 
 	// Run verify (should fail due to missing OPA)
-	result, _ := Verify(cfg, "test:image", false, true)
+	result, _ := Verify(cfg, "test:image", false, true, nil)
 
 	if result == nil {
 		t.Fatal("Result should not be nil")

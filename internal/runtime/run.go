@@ -29,7 +29,7 @@ func Run(cfg *config.Config, opts *RunOptions, outputJSON bool) error {
 		ui.PrintTrust("Verifying workload before execution...")
 	}
 
-	verifyResult, err := verify.Verify(cfg, opts.ImageRef, false, outputJSON)
+	verifyResult, err := verify.Verify(cfg, opts.ImageRef, false, outputJSON, nil)
 	if err != nil {
 		// RED OUTPUT MEANS STOP (AGENTS.md Section 0)
 		if !outputJSON {

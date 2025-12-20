@@ -266,6 +266,7 @@ acc run myimage:latest --cap-add NET_ADMIN
 | `attest` | Create attestation for artifact with build metadata |
 | `push` | Verify and push verified artifacts to registry |
 | `promote` | Re-verify and promote workload to environment |
+| `trust status` | View trust status with profile and violation details |
 | `policy explain` | Explain last verification decision |
 | `upgrade` | Upgrade acc to the latest version with checksum verification |
 | `config` | Get or set configuration values (coming soon) |
@@ -282,6 +283,188 @@ acc run myimage:latest --cap-add NET_ADMIN
 --policy-pack path  Path to policy pack
 --config path       Path to config file
 ```
+
+## Policy Profiles
+
+**New in v0.2.0**: Policy Profiles provide an opt-in configuration layer for post-evaluation violation filtering.
+
+### Overview
+
+Profiles allow you to:
+- **Filter violations by rule name** - Only enforce specific policies
+- **Ignore violations by severity** - Suppress informational/low severity issues
+- **Convert violations to warnings** - Display issues without blocking
+- **Customize enforcement per environment** - Different profiles for dev/staging/prod
+
+**Important**: Profiles do NOT modify policy evaluation - they filter results AFTER OPA runs. All policies still execute; profiles only control which violations block execution.
+
+### Quick Start
+
+```bash
+# Verify with baseline profile (allows common patterns)
+acc verify myapp:latest --profile baseline
+
+# Verify with strict profile (production-ready)
+acc verify myapp:prod --profile strict
+
+# View trust status with profile information
+acc trust status myapp:latest
+```
+
+### Profile Schema (v1)
+
+Profiles are YAML files stored in `.acc/profiles/<name>.yaml`:
+
+```yaml
+schemaVersion: 1  # Required: must be 1
+name: baseline    # Required: profile name
+description: Baseline enforcement profile  # Required
+
+# Optional: Only enforce these policies (allowlist)
+policies:
+  allow:
+    - no-root-user
+    - no-latest-tag
+    - sbom-present
+
+# Optional: Ignore these violations
+violations:
+  ignore:
+    - informational  # By severity
+    - low            # By severity
+    - missing-healthcheck  # By rule name
+
+# Optional: Warning display
+warnings:
+  show: true  # Display ignored violations as warnings
+```
+
+### Using Profiles
+
+**Profile loading:**
+- `--profile baseline` → Loads `.acc/profiles/baseline.yaml`
+- `--profile ./custom.yaml` → Loads explicit path
+- No `--profile` flag → Profiles disabled (v0.1.x behavior)
+
+**Exit behavior:**
+- With profile: Only active violations cause failure
+- Ignored violations → Displayed as warnings (if `warnings.show: true`)
+- No state file → Exit code 2
+
+### Example Profiles
+
+**Baseline Profile** (`.acc/profiles/baseline.yaml`) - Development/Testing:
+
+```yaml
+schemaVersion: 1
+name: baseline
+description: Baseline enforcement for development
+
+policies:
+  allow:
+    - no-root-user
+    - no-latest-tag
+    - sbom-present
+
+violations:
+  ignore:
+    - informational
+    - low
+
+warnings:
+  show: true
+```
+
+**Strict Profile** (`.acc/profiles/strict.yaml`) - Production:
+
+```yaml
+schemaVersion: 1
+name: strict
+description: Strict enforcement for production
+
+policies:
+  allow:
+    - no-root-user
+    - no-latest-tag
+    - no-privileged
+    - sbom-present
+    - read-only-rootfs
+    - drop-all-capabilities
+
+violations:
+  ignore: []  # No exceptions
+
+warnings:
+  show: false
+```
+
+### Trust Status Command
+
+View verification status with profile information:
+
+```bash
+$ acc trust status myapp:latest
+Trust Status
+
+Image:          myapp:latest
+Last Verified:  2025-01-20T10:30:00Z
+
+Status:         ✓ PASS
+Profile:        baseline
+
+Artifacts:
+  SBOM:         present
+  Attestations: 2 found
+
+Warnings (2 ignored):
+  [low] missing-healthcheck: Container lacks health check
+  [informational] old-base-image: Base image is 30 days old
+```
+
+**Exit codes:**
+- `0` - Verified (pass)
+- `1` - Not verified (fail)
+- `2` - No verification state found
+
+### Backward Compatibility
+
+All v0.1.x behavior is preserved when `--profile` is not used:
+- `acc verify myapp:latest` → Identical to v0.1.8
+- Profiles are explicit opt-in only
+- No auto-discovery or defaults
+- JSON output unchanged without profile
+
+### Migration from v0.1.x
+
+1. **Continue using v0.1.x behavior:**
+   ```bash
+   acc verify myapp:latest  # No changes required
+   ```
+
+2. **Adopt profiles gradually:**
+   ```bash
+   # Create baseline profile
+   mkdir -p .acc/profiles
+   cat > .acc/profiles/baseline.yaml <<EOF
+   schemaVersion: 1
+   name: baseline
+   description: Development profile
+   violations:
+     ignore:
+       - informational
+   warnings:
+     show: true
+   EOF
+
+   # Use in CI/CD
+   acc verify myapp:latest --profile baseline
+   ```
+
+3. **Different profiles per environment:**
+   ```bash
+   acc verify myapp:dev --profile baseline    # Development
+   acc verify myapp:prod --profile strict     # Production
+   ```
 
 ## Upgrade
 
