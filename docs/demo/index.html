@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>acc - Interactive Demo</title>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.7.0/dist/bundle/asciinema-player.min.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #e0e0e0;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .header p {
+            color: #a8a8a8;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(78, 201, 176, 0.2);
+            color: #4ec9b0;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-weight: 500;
+            border: 1px solid rgba(78, 201, 176, 0.3);
+        }
+
+        .player-wrapper {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            margin-bottom: 30px;
+        }
+
+        #demo {
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .info-box {
+            background: rgba(30, 30, 30, 0.6);
+            border: 1px solid rgba(78, 201, 176, 0.2);
+            border-radius: 6px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .info-box h3 {
+            color: #4ec9b0;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+
+        .info-box ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .info-box li {
+            padding: 8px 0;
+            padding-left: 24px;
+            position: relative;
+            color: #d4d4d4;
+        }
+
+        .info-box li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #808080;
+            font-size: 0.9em;
+        }
+
+        .footer a {
+            color: #4ec9b0;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .disclaimer {
+            background: rgba(206, 145, 120, 0.1);
+            border-left: 3px solid #ce9178;
+            padding: 12px 16px;
+            margin-top: 20px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .header p {
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>acc - Secure Workload Accelerator</h1>
+            <p>60-second interactive walkthrough</p>
+            <span class="badge">Auto-playing demo</span>
+        </div>
+
+        <div class="player-wrapper">
+            <div id="demo"></div>
+        </div>
+
+        <div class="info-box">
+            <h3>What you're seeing:</h3>
+            <ul>
+                <li>Initialize an acc project with security policies</li>
+                <li>Verify a compliant image (PASS - non-root user)</li>
+                <li>Inspect trust summary with SBOM and attestations</li>
+                <li>Verify a non-compliant image (FAIL - runs as root)</li>
+                <li>Explain policy violation with remediation steps</li>
+                <li>Create cryptographic attestation for verified image</li>
+            </ul>
+        </div>
+
+        <div class="disclaimer">
+            <strong>Note:</strong> This is an illustrative demo with simulated output. No commands are executed on your system.
+        </div>
+
+        <div class="footer">
+            <p>
+                <a href="https://github.com/cloudcwfranck/acc" target="_blank">View on GitHub</a>
+                |
+                <a href="../../README.md">Documentation</a>
+            </p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.7.0/dist/bundle/asciinema-player.min.js"></script>
+    <script>
+        AsciinemaPlayer.create('acc.cast', document.getElementById('demo'), {
+            autoPlay: true,
+            loop: true,
+            speed: 1.5,
+            theme: 'monokai',
+            fit: 'width',
+            terminalFontSize: '14px',
+            terminalLineHeight: 1.4,
+            cols: 100,
+            rows: 30
+        });
+    </script>
+</body>
+</html>

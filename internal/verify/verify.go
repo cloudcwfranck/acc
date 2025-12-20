@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cloudcwfranck/acc/internal/config"
+	"github.com/cloudcwfranck/acc/internal/profile"
 	"github.com/cloudcwfranck/acc/internal/ui"
 	"github.com/cloudcwfranck/acc/internal/waivers"
 )
@@ -41,7 +42,8 @@ type PolicyViolation struct {
 
 // Verify verifies SBOM, policy compliance, and attestations (AGENTS.md Section 2 - acc verify)
 // This is critical: verification gates execution (Section 1.1)
-func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON bool) (*VerifyResult, error) {
+// v0.2.0: Accepts optional profile for post-evaluation filtering (pass nil for v0.1.x behavior)
+func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON bool, prof *profile.Profile) (*VerifyResult, error) {
 	if !outputJSON {
 		ui.PrintTrust("Starting verification process")
 	}
@@ -86,7 +88,7 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		// CRITICAL: Per AGENTS.md Section 1.1 - verification failures block execution
 		if cfg.Policy.Mode == "enforce" {
 			// Save state before failing
-			saveVerifyState(imageRef, result)
+			saveVerifyState(imageRef, result, prof)
 			return result, fmt.Errorf("verification failed: SBOM required but not found")
 		}
 	} else {
@@ -128,7 +130,7 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 	}
 
 	if result.Status == "fail" && len(result.Violations) > 0 && cfg.Policy.Mode == "enforce" {
-		saveVerifyState(imageRef, result)
+		saveVerifyState(imageRef, result, prof)
 		return result, fmt.Errorf("verification failed: one or more waivers have expired")
 	}
 
@@ -155,7 +157,7 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		}
 
 		if cfg.Policy.Mode == "enforce" {
-			saveVerifyState(imageRef, result)
+			saveVerifyState(imageRef, result, prof)
 			return result, fmt.Errorf("verification failed: %s", violation.Message)
 		}
 	} else {
@@ -185,7 +187,7 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		}
 
 		// Save state before returning
-		saveVerifyState(imageRef, result)
+		saveVerifyState(imageRef, result, prof)
 
 		// v0.1.4: ALWAYS return valid result (never nil)
 		if cfg.Policy.Mode == "enforce" {
@@ -195,6 +197,59 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 	} else {
 		result.PolicyResult = policyResult
 		result.Violations = append(result.Violations, policyResult.Violations...)
+	}
+
+	// v0.2.0: Apply profile filtering if profile is provided (post-evaluation gating)
+	if prof != nil && result.PolicyResult != nil {
+		// Convert PolicyViolation to profile.Violation for filtering
+		profileViolations := make([]profile.Violation, len(result.PolicyResult.Violations))
+		for i, v := range result.PolicyResult.Violations {
+			profileViolations[i] = profile.Violation{
+				Rule:     v.Rule,
+				Severity: v.Severity,
+				Result:   v.Result,
+				Message:  v.Message,
+			}
+		}
+
+		// Apply profile resolution
+		resolution := profile.ResolveViolations(prof, profileViolations)
+
+		// Convert back to PolicyViolation
+		filteredViolations := make([]PolicyViolation, len(resolution.Violations))
+		for i, v := range resolution.Violations {
+			filteredViolations[i] = PolicyViolation{
+				Rule:     v.Rule,
+				Severity: v.Severity,
+				Result:   v.Result,
+				Message:  v.Message,
+			}
+		}
+
+		filteredWarnings := make([]PolicyViolation, len(resolution.Warnings))
+		for i, v := range resolution.Warnings {
+			filteredWarnings[i] = PolicyViolation{
+				Rule:     v.Rule,
+				Severity: v.Severity,
+				Result:   v.Result,
+				Message:  v.Message,
+			}
+		}
+
+		// Update policy result with filtered violations
+		result.PolicyResult.Violations = filteredViolations
+		result.PolicyResult.Warnings = filteredWarnings
+		result.PolicyResult.Allow = resolution.Allow
+		result.Violations = filteredViolations
+
+		// Print warnings to stderr if warnings are enabled
+		if prof.Warnings.Show && len(filteredWarnings) > 0 && !outputJSON {
+			fmt.Fprintf(os.Stderr, "\nWarnings (ignored by profile %q):\n", prof.Name)
+			for _, w := range filteredWarnings {
+				fmt.Fprintf(os.Stderr, "  [%s] %s: %s\n", w.Severity, w.Rule, w.Message)
+			}
+			fmt.Fprintln(os.Stderr)
+		}
 	}
 
 	// Determine overall status (only if we didn't already handle error above)
@@ -210,7 +265,7 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 		// CRITICAL: Per AGENTS.md Section 1.1 - no bypass, verification gates execution
 		if cfg.Policy.Mode == "enforce" {
 			// Save state before failing
-			saveVerifyState(imageRef, result)
+			saveVerifyState(imageRef, result, prof)
 			return result, fmt.Errorf("verification failed: policy violations detected")
 		}
 	} else if result.Status != "fail" {
@@ -235,17 +290,18 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 	}
 
 	// Save verification state
-	saveVerifyState(imageRef, result)
+	saveVerifyState(imageRef, result, prof)
 
 	return result, nil
 }
 
 // VerifyState represents the persisted verification state for policy explain
 type VerifyState struct {
-	ImageRef  string        `json:"imageRef"`
-	Status    string        `json:"status"`
-	Timestamp string        `json:"timestamp"`
-	Result    *VerifyResult `json:"result"`
+	ImageRef    string        `json:"imageRef"`
+	Status      string        `json:"status"`
+	Timestamp   string        `json:"timestamp"`
+	Result      *VerifyResult `json:"result"`
+	ProfileUsed string        `json:"profileUsed,omitempty"` // v0.2.0: Profile name if used
 }
 
 // FormatJSON returns JSON representation
@@ -570,7 +626,7 @@ func checkAttestations(cfg *config.Config) bool {
 }
 
 // saveVerifyState persists verification results for policy explain
-func saveVerifyState(imageRef string, result *VerifyResult) error {
+func saveVerifyState(imageRef string, result *VerifyResult, prof *profile.Profile) error {
 	stateDir := filepath.Join(".acc", "state")
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
 		return fmt.Errorf("failed to create state directory: %w", err)
@@ -581,6 +637,11 @@ func saveVerifyState(imageRef string, result *VerifyResult) error {
 		Status:    result.Status,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Result:    result,
+	}
+
+	// v0.2.0: Save profile name if profile was used
+	if prof != nil {
+		state.ProfileUsed = prof.Name
 	}
 
 	// Mask any potential secrets before saving

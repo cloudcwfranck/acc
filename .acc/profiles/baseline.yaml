@@ -1,0 +1,29 @@
+# Baseline Policy Profile
+# Recommended for development and testing environments
+# Allows common security policies, ignores informational/low severity violations
+
+schemaVersion: 1
+name: baseline
+description: Baseline enforcement profile for development environments
+
+# Allow list: Only enforce these specific policies
+policies:
+  allow:
+    - no-root-user
+    - no-latest-tag
+    - sbom-present
+
+# Ignore list: Suppress these violations
+violations:
+  ignore:
+    # Ignore by severity
+    - informational
+    - low
+
+    # Ignore specific rules (examples - adjust based on your policies)
+    # - missing-healthcheck
+    # - excessive-capabilities
+
+# Warning display
+warnings:
+  show: true  # Display ignored violations as warnings

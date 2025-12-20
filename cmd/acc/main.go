@@ -10,9 +10,11 @@ import (
 	"github.com/cloudcwfranck/acc/internal/config"
 	"github.com/cloudcwfranck/acc/internal/inspect"
 	"github.com/cloudcwfranck/acc/internal/policy"
+	"github.com/cloudcwfranck/acc/internal/profile"
 	"github.com/cloudcwfranck/acc/internal/promote"
 	"github.com/cloudcwfranck/acc/internal/push"
 	"github.com/cloudcwfranck/acc/internal/runtime"
+	"github.com/cloudcwfranck/acc/internal/trust"
 	"github.com/cloudcwfranck/acc/internal/ui"
 	"github.com/cloudcwfranck/acc/internal/upgrade"
 	"github.com/cloudcwfranck/acc/internal/verify"
@@ -77,6 +79,7 @@ that can be built, verified, run, pushed, and promoted with cryptographic and po
 		NewPolicyCmd(),
 		NewAttestCmd(),
 		NewInspectCmd(),
+		NewTrustCmd(),
 		NewConfigCmd(),
 		NewLoginCmd(),
 		NewVersionCmd(),
@@ -142,7 +145,10 @@ func NewBuildCmd() *cobra.Command {
 }
 
 func NewVerifyCmd() *cobra.Command {
-	var imageRef string
+	var (
+		imageRef    string
+		profilePath string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "verify [image]",
@@ -161,8 +167,17 @@ func NewVerifyCmd() *cobra.Command {
 				ref = args[0]
 			}
 
+			// v0.2.0: Load profile if specified
+			var prof *profile.Profile
+			if profilePath != "" {
+				prof, err = profile.Load(profilePath)
+				if err != nil {
+					return fmt.Errorf("failed to load profile: %w", err)
+				}
+			}
+
 			// Verify
-			result, err := verify.Verify(cfg, ref, false, jsonFlag)
+			result, err := verify.Verify(cfg, ref, false, jsonFlag, prof)
 
 			// v0.1.4: Defensive nil check (should never happen after v0.1.4 fixes)
 			if result == nil {
@@ -194,6 +209,7 @@ func NewVerifyCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to verify")
+	cmd.Flags().StringVar(&profilePath, "profile", "", "policy profile name or path (.acc/profiles/<name>.yaml or explicit path)")
 
 	return cmd
 }
@@ -453,6 +469,59 @@ func NewInspectCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to inspect")
+
+	return cmd
+}
+
+func NewTrustCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "trust",
+		Short: "Manage trust status and profiles",
+		Long:  "View trust status and manage policy profiles",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+
+	// Add status subcommand
+	cmd.AddCommand(NewTrustStatusCmd())
+	return cmd
+}
+
+func NewTrustStatusCmd() *cobra.Command {
+	var imageRef string
+
+	cmd := &cobra.Command{
+		Use:   "status [image]",
+		Short: "View trust status for an image",
+		Long:  "Display verification status, profile used, violations, and attestations for an image",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ref := imageRef
+			if len(args) > 0 {
+				ref = args[0]
+			}
+
+			if ref == "" {
+				return fmt.Errorf("image reference required\n\nUsage: acc trust status <image>")
+			}
+
+			// Load trust status
+			result, err := trust.Status(ref, jsonFlag)
+			if err != nil {
+				return err
+			}
+
+			if jsonFlag {
+				fmt.Println(result.FormatJSON())
+			}
+
+			os.Exit(result.ExitCode())
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to check")
 
 	return cmd
 }

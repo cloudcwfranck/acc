@@ -1,0 +1,31 @@
+# Strict Policy Profile
+# Recommended for production environments
+# Enforces comprehensive security policies, minimal exceptions
+
+schemaVersion: 1
+name: strict
+description: Strict enforcement profile for production environments
+
+# Allow list: Enforce comprehensive security policies
+policies:
+  allow:
+    - no-root-user
+    - no-latest-tag
+    - no-privileged
+    - sbom-present
+    - read-only-rootfs
+    - drop-all-capabilities
+    - no-host-network
+    - no-host-pid
+    - no-host-ipc
+    - secure-base-image
+
+# Ignore list: Minimal exceptions (empty for strictest enforcement)
+violations:
+  ignore: []
+    # Add specific exceptions only when necessary
+    # Example: - informational
+
+# Warning display
+warnings:
+  show: false  # Don't show warnings in strict mode
