@@ -282,11 +282,12 @@ func Verify(cfg *config.Config, imageRef string, forPromotion bool, outputJSON b
 			}
 		}
 
-		// CRITICAL: Per AGENTS.md Section 1.1 - verification gates execution in enforce mode
-		if cfg.Policy.Mode == "enforce" {
-			saveVerifyState(imageRef, result, prof)
-			return result, fmt.Errorf("verification failed: policy violations detected")
-		}
+		// CRITICAL: Per Testing Contract - exit code MUST match status field
+		// When status is "fail", verify MUST return error to ensure exit code 1
+		// This is independent of policy mode (warn vs enforce)
+		// Policy mode controls downstream blocking (push/run/promote), not verify exit code
+		saveVerifyState(imageRef, result, prof)
+		return result, fmt.Errorf("verification failed: policy violations detected")
 	}
 
 	// Step 4: Check attestations (optional for now)
