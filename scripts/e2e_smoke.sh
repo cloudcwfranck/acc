@@ -306,8 +306,10 @@ fi
 # Verify immediately (while SBOM is fresh)
 log "Verifying demo-app:root (should FAIL)"
 
-verify_root_output=$($ACC_BIN verify --json demo-app:root 2>&1) || true
+set +e
+verify_root_output=$($ACC_BIN verify --json demo-app:root 2>&1)
 verify_root_exit=$?
+set -e
 
 log "Verify output:"
 echo "$verify_root_output" | tee -a "$LOGFILE"
@@ -389,8 +391,10 @@ log_section "TEST 5: Attest UX Checks"
 
 # After verifying root last, acc attest demo-app:ok should FAIL (mismatch)
 log "Attempting to attest demo-app:ok after verifying demo-app:root (should fail)"
-attest_mismatch_output=$($ACC_BIN attest demo-app:ok 2>&1) || true
+set +e
+attest_mismatch_output=$($ACC_BIN attest demo-app:ok 2>&1)
 attest_mismatch_exit=$?
+set -e
 
 if [ $attest_mismatch_exit -ne 0 ]; then
     log_success "acc attest demo-app:ok after verifying root: failed as expected"
