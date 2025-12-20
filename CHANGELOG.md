@@ -16,6 +16,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.2.2] - 2025-12-20
+
+### Fixed - Final Gate Consistency & SBOM Workflow
+
+**This release implements a single authoritative final gate for verify decision consistency.**
+
+**Critical Fixes:**
+
+1. **Final gate consistency** - Implemented single authoritative decision gate
+   - **Bug**: `status:"fail"` could occur while `PolicyResult.allow:true` due to early status assignments
+   - **Root Cause**: Multiple places set `status = "fail"`, but final gate only set "fail" if still not failed
+   - **Fix**: Single authoritative `finalAllow` variable that ALWAYS determines final status, overriding all earlier assignments
+   - **Impact**: Guarantees `status` and exit code derive from `PolicyResult.Allow` (the final decision after profile filtering)
+   - **Code**: `internal/verify/verify.go:255-286` - Authoritative final gate
+
+2. **SBOM workflow guidance** - Improved error messages and documentation
+   - **Bug**: SBOM-required error lacked actionable workflow guidance
+   - **Fix**: Error message now includes step-by-step workflow:
+     - Option 1: `docker build` → `syft` → `acc verify`
+     - Option 2: `acc build` (automatic SBOM generation)
+   - **Impact**: Users know exactly how to generate SBOMs
+   - **Code**: `internal/verify/verify.go:75-97` - Enhanced error message
+
+3. **README SBOM Workflows section** - Comprehensive workflow documentation
+   - **Added**: Dedicated "SBOM Workflows" section with 3 workflows:
+     - Workflow 1: `acc build` (recommended, automatic)
+     - Workflow 2: `docker build` + manual SBOM generation
+     - Workflow 3: CI/CD integration example
+   - **Added**: SBOM troubleshooting guide
+   - **Impact**: Clear documentation for all use cases
+
+**Regression Tests Added:**
+- `TestVerify_FinalGateConsistency` - Verifies status MUST match allow field
+- `TestVerify_SBOMMissingErrorMessage` - Verifies error includes workflow guidance
+
+**Design Principle:**
+```go
+// Single authoritative final gate (v0.2.2)
+var finalAllow bool
+if result.PolicyResult != nil {
+    finalAllow = result.PolicyResult.Allow
+} else {
+    finalAllow = false
+}
+
+// Status ALWAYS derives from final gate
+if finalAllow {
+    result.Status = "pass"
+} else {
+    result.Status = "fail"
+}
+```
+
+**Files Changed:**
+- `internal/verify/verify.go` - Single authoritative final gate, improved SBOM error
+- `internal/verify/verify_test.go` - Added regression tests, added strings import
+- `README.md` - Added comprehensive SBOM Workflows section
+
+**Breaking Changes:** None - all changes maintain backward compatibility
+
 ## [0.2.1] - 2025-12-20
 
 ### Fixed - v0.2.0 Regression Bugs
