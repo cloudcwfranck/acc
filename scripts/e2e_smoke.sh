@@ -219,14 +219,14 @@ else
 fi
 
 # ============================================================================
-# TEST 2: Build test images with docker
+# TEST 2: Build and verify demo-app:ok (non-root user)
 # ============================================================================
 
-log_section "TEST 2: Build Docker Test Images"
+log_section "TEST 2: Build and Verify demo-app:ok (non-root)"
 
 # Create Dockerfile for non-root user (should PASS policy)
 log "Creating Dockerfile for demo-app:ok (non-root user)"
-cat > Dockerfile.ok <<'EOF'
+cat > Dockerfile <<'EOF'
 FROM alpine:3.19
 RUN addgroup -g 1000 appuser && adduser -D -u 1000 -G appuser appuser
 USER appuser
@@ -234,56 +234,20 @@ WORKDIR /app
 CMD ["sh", "-c", "echo 'Hello from non-root user'; sleep 1"]
 EOF
 
-assert_success "Build demo-app:ok" \
-    docker build -f Dockerfile.ok -t demo-app:ok .
+# Build with positional arg (v0.2.3 fix)
+log "Building demo-app:ok with acc build (positional arg)"
+assert_success "acc build demo-app:ok (positional arg)" \
+    $ACC_BIN build demo-app:ok
 
-# Create Dockerfile for root user (should FAIL policy)
-log "Creating Dockerfile for demo-app:root (root user)"
-cat > Dockerfile.root <<'EOF'
-FROM alpine:3.19
-# Intentionally no USER directive - runs as root
-WORKDIR /app
-CMD ["sh", "-c", "echo 'Hello from root user'; sleep 1"]
-EOF
-
-assert_success "Build demo-app:root" \
-    docker build -f Dockerfile.root -t demo-app:root .
-
-# ============================================================================
-# TEST 3: acc build (if supported)
-# ============================================================================
-
-log_section "TEST 3: acc build"
-
-# Test acc build with positional argument (v0.2.3 fix)
-log "Testing acc build with positional argument"
-if assert_success "acc build demo-app:ok (positional arg)" \
-    $ACC_BIN build demo-app:ok; then
-
-    # Verify SBOM was created
-    if [ -f ".acc/sbom/test-project.spdx.json" ]; then
-        log_success "SBOM created by acc build"
-    else
-        log_error "SBOM not created by acc build (v0.2.3 bug)"
-    fi
+# Verify SBOM was created
+if [ -f ".acc/sbom/test-project.spdx.json" ]; then
+    log_success "SBOM created for demo-app:ok"
+else
+    log_error "SBOM not created for demo-app:ok"
 fi
 
-# Also test with --tag flag
-log "Testing acc build with --tag flag"
-if assert_success "acc build demo-app:root (--tag flag)" \
-    $ACC_BIN build --tag demo-app:root; then
-
-    if [ -f ".acc/sbom/test-project.spdx.json" ]; then
-        log_success "SBOM created by acc build --tag"
-    fi
-fi
-
-# ============================================================================
-# TEST 4: acc verify demo-app:ok (should PASS)
-# ============================================================================
-
-log_section "TEST 4: acc verify demo-app:ok (expect PASS)"
-
+# Verify immediately (while SBOM is fresh)
+log "Verifying demo-app:ok (should PASS)"
 verify_ok_output=$($ACC_BIN verify --json demo-app:ok 2>&1) || true
 verify_ok_exit=$?
 
@@ -313,10 +277,34 @@ else
 fi
 
 # ============================================================================
-# TEST 5: acc verify demo-app:root (should FAIL)
+# TEST 3: Build and verify demo-app:root (root user)
 # ============================================================================
 
-log_section "TEST 5: acc verify demo-app:root (expect FAIL)"
+log_section "TEST 3: Build and Verify demo-app:root (root user)"
+
+# Create Dockerfile for root user (should FAIL policy)
+log "Creating Dockerfile for demo-app:root (root user)"
+cat > Dockerfile <<'EOF'
+FROM alpine:3.19
+# Intentionally no USER directive - runs as root
+WORKDIR /app
+CMD ["sh", "-c", "echo 'Hello from root user'; sleep 1"]
+EOF
+
+# Build with --tag flag
+log "Building demo-app:root with acc build (--tag flag)"
+assert_success "acc build demo-app:root (--tag flag)" \
+    $ACC_BIN build --tag demo-app:root
+
+# Verify SBOM was updated
+if [ -f ".acc/sbom/test-project.spdx.json" ]; then
+    log_success "SBOM updated for demo-app:root"
+else
+    log_error "SBOM not created for demo-app:root"
+fi
+
+# Verify immediately (while SBOM is fresh)
+log "Verifying demo-app:root (should FAIL)"
 
 verify_root_output=$($ACC_BIN verify --json demo-app:root 2>&1) || true
 verify_root_exit=$?
@@ -348,10 +336,10 @@ else
 fi
 
 # ============================================================================
-# TEST 6: acc policy explain
+# TEST 4: acc policy explain
 # ============================================================================
 
-log_section "TEST 6: acc policy explain"
+log_section "TEST 4: acc policy explain"
 
 # After verifying root (which failed), policy explain should show the result
 explain_output=$($ACC_BIN policy explain --json 2>&1) || true
@@ -381,10 +369,10 @@ else
 fi
 
 # ============================================================================
-# TEST 7: Attest UX checks
+# TEST 5: Attest UX checks
 # ============================================================================
 
-log_section "TEST 7: Attest UX Checks"
+log_section "TEST 5: Attest UX Checks"
 
 # After verifying root last, acc attest demo-app:ok should FAIL (mismatch)
 log "Attempting to attest demo-app:ok after verifying demo-app:root (should fail)"
@@ -426,10 +414,10 @@ else
 fi
 
 # ============================================================================
-# TEST 8: Inspect per-image (no cross leakage)
+# TEST 6: Inspect per-image (no cross leakage)
 # ============================================================================
 
-log_section "TEST 8: Inspect Per-Image State"
+log_section "TEST 6: Inspect Per-Image State"
 
 # Inspect demo-app:ok (should show PASS)
 inspect_ok_output=$($ACC_BIN inspect --json demo-app:ok 2>&1) || true
@@ -462,10 +450,10 @@ else
 fi
 
 # ============================================================================
-# TEST 9: Trust status
+# TEST 7: Trust status
 # ============================================================================
 
-log_section "TEST 9: Trust Status"
+log_section "TEST 7: Trust Status"
 
 # Trust status for demo-app:ok
 status_ok_output=$($ACC_BIN trust status --json demo-app:ok 2>&1) || true
@@ -519,10 +507,10 @@ else
 fi
 
 # ============================================================================
-# TEST 10: Run command (if supported)
+# TEST 8: Run command (if supported)
 # ============================================================================
 
-log_section "TEST 10: acc run"
+log_section "TEST 8: acc run"
 
 # Test if acc run works with verified image
 run_output=$($ACC_BIN run demo-app:ok -- echo "test" 2>&1) || true
