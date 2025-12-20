@@ -5,27 +5,64 @@ on:
     branches: [ main, claude/* ]
   pull_request:
     branches: [ main ]
+  schedule:
+    # Tier 2 nightly at 2 AM UTC
+    - cron: '0 2 * * *'
 
 permissions:
   contents: read
+  packages: write  # For GHCR push in Tier 2
 
 jobs:
-  test:
-    name: Test
+  # ============================================================================
+  # TIER 0: Command Registration & Help Text (ALWAYS RUNS, BLOCKS PR)
+  # Fast checks that all commands exist and show help correctly
+  # ============================================================================
+  tier0-cli-help:
+    name: "Tier 0: CLI Help Matrix"
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Full history for changelog check
 
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
         go-version: '1.21'
 
-    - name: Check formatting
+    - name: Build acc
+      run: go build -o acc ./cmd/acc
+
+    - name: Run CLI help matrix tests
+      run: bash scripts/cli_help_matrix.sh
+
+    - name: Upload Tier 0 logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: tier0-logs
+        path: /tmp/tier0-*.log
+        retention-days: 7
+
+  # ============================================================================
+  # TIER 1: Offline E2E Smoke Tests (ALWAYS RUNS, BLOCKS PR)
+  # Comprehensive functional tests without external registry dependencies
+  # ============================================================================
+  tier1-e2e-smoke:
+    name: "Tier 1: E2E Smoke Tests"
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+
+    - name: Check Go formatting
       run: |
         if [ -n "$(gofmt -l .)" ]; then
           echo "Go code is not formatted:"
@@ -33,60 +70,108 @@ jobs:
           exit 1
         fi
 
-    - name: Run tests
+    - name: Run Go tests
       run: go test -v ./...
 
     - name: Build acc
       run: go build -o acc ./cmd/acc
 
-    - name: Test acc version
-      run: ./acc version
-
-    - name: Smoke test - acc init
+    - name: Install test dependencies
       run: |
-        mkdir -p test-project
-        cd test-project
-        ../acc init smoke-test --json
-        cat acc.yaml
-        ls -la .acc/policy/
+        # Install OPA v0.66.0
+        curl -L -o opa https://openpolicyagent.org/downloads/v0.66.0/opa_linux_amd64_static
+        chmod +x opa
+        sudo mv opa /usr/local/bin/
+        opa version
 
-    - name: Smoke test - verification gating
+        # Install jq
+        sudo apt-get update
+        sudo apt-get install -y jq
+
+        # Install syft (required for SBOM generation)
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+        syft version
+
+    - name: Run E2E smoke tests
+      run: bash scripts/e2e_smoke.sh
+
+    - name: Upload Tier 1 artifacts on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: tier1-artifacts
+        path: |
+          /tmp/acc-e2e-*/
+          /tmp/tier1-*.log
+        retention-days: 7
+
+  # ============================================================================
+  # TIER 2: Registry Integration (OPTIONAL, SCHEDULED + TAGS, NEVER BLOCKS)
+  # Tests push/promote workflows with GHCR
+  # ============================================================================
+  tier2-registry:
+    name: "Tier 2: Registry Integration"
+    runs-on: ubuntu-latest
+    # Only run on schedule (nightly), tags, or main branch (not PRs)
+    if: |
+      github.event_name == 'schedule' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+
+    - name: Build acc
+      run: go build -o acc ./cmd/acc
+
+    - name: Install test dependencies
       run: |
-        cd test-project
-        # Create a Dockerfile that violates policy (runs as root)
-        cat > Dockerfile <<EOF
-        FROM alpine:latest
-        # Intentionally running as root (violates no-root-user policy)
-        RUN apk add --no-cache nginx
-        CMD ["nginx", "-g", "daemon off;"]
-        EOF
+        # Install OPA
+        curl -L -o opa https://openpolicyagent.org/downloads/v0.66.0/opa_linux_amd64_static
+        chmod +x opa
+        sudo mv opa /usr/local/bin/
 
-        # Try to verify (should fail because SBOM is missing)
-        ../acc verify alpine:latest || echo "Verification failed as expected"
+        # Install jq
+        sudo apt-get update
+        sudo apt-get install -y jq
 
-        # Show policy explain output
-        ../acc policy explain || echo "No history yet"
+        # Install syft
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
-    - name: Smoke test - acc inspect
-      run: |
-        cd test-project
-        ../acc inspect alpine:latest || echo "Inspect completed (image may not exist)"
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Verify help commands work
-      run: |
-        ./acc help
-        ./acc init --help
-        ./acc build --help
-        ./acc verify --help
-        ./acc run --help
-        ./acc push --help
-        ./acc promote --help
-        ./acc attest --help
-        ./acc inspect --help
-        ./acc policy --help
-        ./acc policy explain --help
+    - name: Run registry integration tests
+      env:
+        GHCR_REGISTRY: ghcr.io
+        GHCR_REPO: ${{ github.repository }}
+        GITHUB_SHA: ${{ github.sha }}
+      run: bash scripts/registry_integration.sh
 
-  changelog:
+    - name: Upload Tier 2 artifacts on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: tier2-artifacts
+        path: |
+          /tmp/acc-registry-*/
+          /tmp/tier2-*.log
+        retention-days: 7
+
+  # ============================================================================
+  # CHANGELOG CHECK (ONLY ON PRS, BLOCKS MERGE)
+  # ============================================================================
+  changelog-check:
     name: Changelog Check
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
@@ -99,13 +184,12 @@ jobs:
 
     - name: Check if CHANGELOG.md was updated
       run: |
-        # Check if CHANGELOG.md has been modified in this PR
         if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "CHANGELOG.md"; then
           echo "✅ CHANGELOG.md has been updated"
         else
           echo "❌ CHANGELOG.md has not been updated"
           echo ""
           echo "Please add an entry to CHANGELOG.md under the [Unreleased] section."
-          echo "See docs/releasing.md for changelog guidelines."
+          echo "See docs/testing-contract.md for changelog guidelines."
           exit 1
         fi
