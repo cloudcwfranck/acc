@@ -179,21 +179,32 @@ func loadVerifyState() (*VerifyState, error) {
 }
 
 // validateImageMatch ensures the imageRef matches the last verified image
+// Testing Contract: attest MUST fail when target image != last verified image
 func validateImageMatch(imageRef string, state *VerifyState) error {
-	// Normalize both refs for comparison (remove tags if comparing by digest)
-	if imageRef != state.ImageRef {
-		// Try to resolve and compare digests
-		currentDigest, err1 := resolveDigest(imageRef)
-		stateDigest, err2 := resolveDigest(state.ImageRef)
+	// CRITICAL: Always resolve digests for authoritative comparison
+	// Digest comparison is more reliable than ref comparison (refs can alias)
+	currentDigest, err1 := resolveDigest(imageRef)
+	stateDigest, err2 := resolveDigest(state.ImageRef)
 
-		if err1 == nil && err2 == nil && currentDigest == stateDigest {
-			// Same image, different refs (e.g., tag vs digest)
+	// If both digests resolved, use digest comparison (authoritative)
+	if err1 == nil && err2 == nil {
+		if currentDigest == stateDigest {
+			// Same image - allow attestation
 			return nil
 		}
-
-		return fmt.Errorf("image mismatch: attempting to attest '%s' but last verified image was '%s'\n\nRemediation:\n  Run 'acc verify %s' first", imageRef, state.ImageRef, imageRef)
+		// Different digests = different images - MUST fail
+		return fmt.Errorf("image mismatch: attempting to attest '%s' (digest: sha256:%s) but last verified image was '%s' (digest: sha256:%s)\n\nRemediation:\n  Run 'acc verify %s' first",
+			imageRef, currentDigest[:12], state.ImageRef, stateDigest[:12], imageRef)
 	}
 
+	// Fallback: If digest resolution failed, compare refs as strings
+	// This handles cases where image might not be in local cache
+	if imageRef != state.ImageRef {
+		return fmt.Errorf("image mismatch: attempting to attest '%s' but last verified image was '%s'\n\nRemediation:\n  Run 'acc verify %s' first",
+			imageRef, state.ImageRef, imageRef)
+	}
+
+	// Same ref - allow attestation
 	return nil
 }
 
