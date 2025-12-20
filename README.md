@@ -21,17 +21,23 @@
 
 ## Demo
 
-**See acc in action - 60-second interactive walkthrough:**
+**See acc in action - 60-second auto-playing terminal walkthrough:**
 
-👉 **[Launch Interactive Demo](docs/demo/acc-walkthrough.html)** 👈
+<div align="center">
 
-The demo shows:
-- Initializing an acc project
-- Verifying a compliant image (PASS)
-- Inspecting trust summary
-- Verifying a non-compliant image (FAIL)
-- Explaining policy decisions
-- Creating attestations
+### 👉 **[Launch Interactive Demo](https://htmlpreview.github.io/?https://github.com/cloudcwfranck/acc/blob/main/docs/demo/index.html)** 👈
+
+*Or open [`docs/demo/index.html`](docs/demo/index.html) locally in your browser*
+
+</div>
+
+**The demo shows:**
+- Initializing an acc project with security policies
+- Verifying a compliant image (✓ PASS - non-root user)
+- Inspecting trust summary (SBOM, attestation, verification status)
+- Verifying a non-compliant image (✗ FAIL - runs as root)
+- Explaining policy violation with remediation steps
+- Creating cryptographic attestation for verified image
 
 *Note: This is an illustrative demo with simulated output. No commands are executed on your system.*
 

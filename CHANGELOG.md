@@ -24,11 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **What's New:**
 
-- ✅ **Interactive walkthrough** - Browser-based terminal demo at `docs/demo/acc-walkthrough.html`
-- ✅ **60-second overview** - Shows init, verify (pass/fail), inspect, policy explain, and attest workflows
-- ✅ **Professional presentation** - Dark theme with animated typing effects and terminal aesthetics
-- ✅ **Self-contained** - Zero dependencies, works offline, no system commands executed
-- ✅ **README integration** - New Demo section with prominent link to walkthrough
+- ✅ **Auto-playing terminal demo** - Asciinema-based recording at `docs/demo/index.html`
+- ✅ **60-second walkthrough** - Shows init, verify (pass/fail), inspect, policy explain, and attest workflows
+- ✅ **Professional presentation** - Real terminal recording with auto-play and loop
+- ✅ **Embeddable** - Uses Asciinema player, works in any browser, auto-plays on load
+- ✅ **README integration** - New Demo section with direct link to embedded player
 
 **Demo Flow:**
 
@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Usage:**
 
-Open `docs/demo/acc-walkthrough.html` in any browser or view online at GitHub Pages.
+Open `docs/demo/index.html` in any browser. The demo auto-plays on load using the Asciinema player.
 
 **Impact:**
 
