@@ -16,6 +16,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.2.3] - 2025-12-20
+
+### Fixed - acc build CLI Regressions
+
+**This release fixes critical bugs in acc build that broke backward compatibility and SBOM generation guarantees.**
+
+**Critical Fixes:**
+
+1. **Positional argument handling** - acc build now accepts image reference as positional argument
+   - **Bug**: `acc build demo-app:ok` silently ignored positional argument, exited 0 without SBOM
+   - **Root Cause**: CLI command didn't parse `args`, only accepted `--tag` flag
+   - **Fix**: Accept both `acc build demo-app:ok` (positional) and `acc build --tag demo-app:ok` (flag)
+   - **Impact**: Restores v0.1.x backward compatibility for automation scripts
+   - **Code**: `cmd/acc/main.go:114-163` - NewBuildCmd with args support
+
+2. **SBOM generation guarantee** - Build now verifies SBOM file exists or fails explicitly
+   - **Bug**: acc build could exit successfully without creating SBOM file
+   - **Root Cause**: No verification that SBOM file actually existed after syft command
+   - **Fix**: Added explicit file existence check after generateSBOM
+   - **Impact**: Build ALWAYS produces SBOM or fails with clear error
+   - **Code**: `internal/build/build.go:81-84` - SBOM file verification
+
+3. **Help text and examples** - Added usage examples to acc build --help
+   - **Bug**: Help text lacked examples, unclear that --tag was accepted
+   - **Fix**: Added examples showing both positional and flag usage
+   - **Impact**: Users can discover correct syntax via --help
+   - **Code**: `cmd/acc/main.go:121-126` - Example usage in help
+
+**Positional Argument Behavior:**
+```bash
+# All these work now:
+acc build demo-app:ok              # positional argument
+acc build --tag demo-app:ok        # flag syntax
+acc build -t demo-app:ok          # short flag
+
+# If both provided, --tag takes precedence with warning
+acc build demo-app:ok --tag other:latest  # Uses other:latest
+```
+
+**SBOM Guarantee:**
+- If `acc build` exits 0, SBOM MUST exist in `.acc/sbom/`
+- If SBOM can't be generated (syft missing, syft fails), build exits non-zero
+- Build logs show explicit "Generating SBOM..." and success/failure
+
+**Regression Tests Added:**
+- `TestDetectBuildTool` - Verifies build tool detection with clear errors
+- `TestBuild_SBOMVerification` - Verifies SBOM exists after successful build
+- `TestGenerateSBOM_Contract` - Verifies generateSBOM creates file or errors
+- `TestSBOMPath_Consistency` - Verifies SBOM path is predictable
+
+**Files Changed:**
+- `cmd/acc/main.go` - Accept positional args, add examples to help
+- `internal/build/build.go` - Add SBOM file verification, improve logging
+- `internal/build/build_test.go` - New file with 4 regression tests
+
+**Breaking Changes:** None - changes restore v0.1.x compatibility
+
 ## [0.2.2] - 2025-12-20
 
 ### Fixed - Final Gate Consistency & SBOM Workflow

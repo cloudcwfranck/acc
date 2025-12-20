@@ -69,9 +69,18 @@ func Build(cfg *config.Config, tag string, outputJSON bool) (*BuildResult, error
 	}
 
 	// Generate SBOM
+	if !outputJSON {
+		ui.PrintInfo("Generating SBOM...")
+	}
+
 	sbomPath, err := generateSBOM(cfg, imageTag, digest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate SBOM: %w", err)
+	}
+
+	// v0.2.3: Verify SBOM file actually exists
+	if _, err := os.Stat(sbomPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("SBOM generation reported success but file not found: %s", sbomPath)
 	}
 
 	if !outputJSON {

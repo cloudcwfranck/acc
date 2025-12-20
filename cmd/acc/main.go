@@ -115,9 +115,16 @@ func NewBuildCmd() *cobra.Command {
 	var tag string
 
 	cmd := &cobra.Command{
-		Use:   "build",
+		Use:   "build [image]",
 		Short: "Build OCI image with SBOM generation",
 		Long:  "Build OCI image (local or referenced), generate SBOM, and output digest + artifact refs",
+		Example: `  # Build with tag flag
+  acc build --tag demo-app:ok
+  acc build -t demo-app:ok
+
+  # Build with positional argument (backward compatible)
+  acc build demo-app:ok`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load config
 			cfg, err := config.Load(configFile)
@@ -125,8 +132,19 @@ func NewBuildCmd() *cobra.Command {
 				return fmt.Errorf("failed to load config: %w\n\nHint: Run 'acc init' to create a configuration file", err)
 			}
 
+			// v0.2.3: Accept positional argument for backward compatibility
+			finalTag := tag
+			if len(args) > 0 {
+				if tag != "" {
+					// Both positional and --tag provided, --tag takes precedence
+					ui.PrintWarning(fmt.Sprintf("Both positional argument %q and --tag %q provided; using --tag", args[0], tag))
+				} else {
+					finalTag = args[0]
+				}
+			}
+
 			// Build image
-			result, err := build.Build(cfg, tag, jsonFlag)
+			result, err := build.Build(cfg, finalTag, jsonFlag)
 			if err != nil {
 				return err
 			}
