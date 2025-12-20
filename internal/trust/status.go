@@ -12,15 +12,15 @@ import (
 
 // StatusResult represents the trust status output
 type StatusResult struct {
-	SchemaVersion string            `json:"schemaVersion"`
-	ImageRef      string            `json:"imageRef"`
-	Status        string            `json:"status"` // pass, fail, unknown
-	ProfileUsed   string            `json:"profileUsed,omitempty"`
-	Violations    []Violation       `json:"violations"`
-	Warnings      []Violation       `json:"warnings"`
-	SBOMPresent   bool              `json:"sbomPresent"`
-	Attestations  []string          `json:"attestations"`
-	Timestamp     string            `json:"timestamp"`
+	SchemaVersion string      `json:"schemaVersion"`
+	ImageRef      string      `json:"imageRef"`
+	Status        string      `json:"status"` // pass, fail, unknown
+	ProfileUsed   string      `json:"profileUsed,omitempty"`
+	Violations    []Violation `json:"violations"`
+	Warnings      []Violation `json:"warnings"`
+	SBOMPresent   bool        `json:"sbomPresent"`
+	Attestations  []string    `json:"attestations"`
+	Timestamp     string      `json:"timestamp"`
 }
 
 // Violation represents a policy violation

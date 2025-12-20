@@ -11,12 +11,12 @@ import (
 
 // Profile represents a policy profile configuration (v1 schema)
 type Profile struct {
-	SchemaVersion int                `yaml:"schemaVersion"`
-	Name          string             `yaml:"name"`
-	Description   string             `yaml:"description"`
-	Policies      PolicyConfig       `yaml:"policies,omitempty"`
-	Violations    ViolationConfig    `yaml:"violations,omitempty"`
-	Warnings      WarningConfig      `yaml:"warnings,omitempty"`
+	SchemaVersion int             `yaml:"schemaVersion"`
+	Name          string          `yaml:"name"`
+	Description   string          `yaml:"description"`
+	Policies      PolicyConfig    `yaml:"policies,omitempty"`
+	Violations    ViolationConfig `yaml:"violations,omitempty"`
+	Warnings      WarningConfig   `yaml:"warnings,omitempty"`
 }
 
 // PolicyConfig defines which policies are allowed
