@@ -12,6 +12,86 @@ The Testing Contract serves as:
 3. **Regression Prevention**: Tests encode assumptions that must not break
 4. **Change Management**: Provides a process for intentional breaking changes
 
+---
+
+## ⚠️ Known Regressions (v0.2.3)
+
+**Status**: Tier 1 E2E tests are FAILING due to regressions. PRs are BLOCKED until these are fixed.
+
+### Regression 1: verify exit code does not match status field
+
+**Contract Violation**:
+- **Expected**: `acc verify` with `status:"fail"` MUST exit 1
+- **Actual**: Exits 0 even when `status:"fail"` and `policyResult.allow:false`
+
+**Example**:
+```bash
+$ acc verify demo-app:root --json
+{
+  "status": "fail",
+  "policyResult": {
+    "allow": false,
+    "violations": [{"rule": "no-root-user", ...}]
+  }
+}
+$ echo $?
+0  # BUG: Should be 1
+```
+
+**Root Cause**: v0.2.2 Single Authoritative Final Gate (commit 7f4e3d7) fixed `status` field to match `policyResult.allow`, but did not update exit code logic in `internal/verify/verify.go:255-286`.
+
+**Impact**:
+- ❌ Tier 1 TEST 3 fails
+- ❌ CI/CD pipelines using exit codes for gating will not block failing images
+- ❌ Breaks Testing Contract guarantee: "Exit 1: Verification failed (status: fail)"
+
+**Test**: `scripts/e2e_smoke.sh` TEST 3 - "acc verify demo-app:root"
+
+**Issue**: [Create issue: "verify should exit 1 when status:fail"]
+
+**Fix Required**: Update verify.go to return error when `finalAllow == false`
+
+---
+
+### Regression 2: attest does not detect image mismatch
+
+**Contract Violation**:
+- **Expected**: `acc attest <image-A>` after `acc verify <image-B>` MUST fail (mismatch)
+- **Actual**: Succeeds and creates attestation for wrong image
+
+**Example**:
+```bash
+$ acc verify demo-app:root     # Verify image-root
+$ acc attest demo-app:ok        # Try to attest image-ok (different!)
+✔ Creating attestation...       # BUG: Should fail with mismatch error
+$ echo $?
+0  # BUG: Should be non-zero
+```
+
+**Root Cause**: Attest UX contract (v0.2.x) requires mismatch detection, but `internal/attest/attest.go` does not compare requested image digest with last verified image digest from `.acc/state/verify/*.json`.
+
+**Impact**:
+- ❌ Tier 1 TEST 5 fails
+- ❌ Attestations can be created for unverified images
+- ❌ Breaks supply chain integrity guarantee
+- ❌ Security risk: attestation for image-A can be applied to image-B
+
+**Test**: `scripts/e2e_smoke.sh` TEST 5 - "Attest UX Checks"
+
+**Issue**: [Create issue: "attest should fail on image mismatch"]
+
+**Fix Required**: Add image digest comparison in attest.go before creating attestation
+
+---
+
+**Resolution Status**:
+- [ ] Regression 1: verify exit code - NOT FIXED
+- [ ] Regression 2: attest mismatch detection - NOT FIXED
+
+**Until fixed, Tier 1 tests will FAIL and block PRs.**
+
+---
+
 ## Test Tiers
 
 ### Tier 0: CLI Help Matrix (BLOCKS PRs)

@@ -316,6 +316,19 @@ if [ $verify_root_exit -eq 1 ]; then
     log_success "acc verify demo-app:root: exit 1"
 else
     log_error "acc verify demo-app:root: exit $verify_root_exit (expected 1)"
+
+    # Diagnostic output for triage
+    echo "========== DIAGNOSTIC: verify exit code mismatch ==========" | tee -a "$LOGFILE"
+    echo "Command: $ACC_BIN verify --json demo-app:root" | tee -a "$LOGFILE"
+    echo "Expected exit: 1 (policy failure)" | tee -a "$LOGFILE"
+    echo "Actual exit: $verify_root_exit" | tee -a "$LOGFILE"
+    echo "Status field: $(echo "$verify_root_output" | jq -r '.status')" | tee -a "$LOGFILE"
+    echo "Allow field: $(echo "$verify_root_output" | jq -r '.policyResult.allow')" | tee -a "$LOGFILE"
+    echo "Violations: $(echo "$verify_root_output" | jq -r '.policyResult.violations | length')" | tee -a "$LOGFILE"
+    echo "acc version: $($ACC_BIN version 2>&1 | head -1)" | tee -a "$LOGFILE"
+    echo "Contract: verify with status:fail MUST exit 1 (Testing Contract v0.2.3)" | tee -a "$LOGFILE"
+    echo "Regression: v0.2.2 Single Authoritative Final Gate fixed status but not exit code" | tee -a "$LOGFILE"
+    echo "==========================================================" | tee -a "$LOGFILE"
 fi
 
 # Validate JSON output and check for no-root-user violation
@@ -390,6 +403,19 @@ if [ $attest_mismatch_exit -ne 0 ]; then
     fi
 else
     log_error "acc attest demo-app:ok after verifying root: succeeded (expected failure)"
+
+    # Diagnostic output for triage
+    echo "========== DIAGNOSTIC: attest mismatch detection failed ==========" | tee -a "$LOGFILE"
+    echo "Command: $ACC_BIN attest demo-app:ok" | tee -a "$LOGFILE"
+    echo "Context: Last verified image was demo-app:root (different image)" | tee -a "$LOGFILE"
+    echo "Expected: Exit non-zero (image mismatch)" | tee -a "$LOGFILE"
+    echo "Actual exit: $attest_mismatch_exit" | tee -a "$LOGFILE"
+    echo "Output: $attest_mismatch_output" | tee -a "$LOGFILE"
+    echo "acc version: $($ACC_BIN version 2>&1 | head -1)" | tee -a "$LOGFILE"
+    echo "Contract: attest MUST fail when image != last verified image (Testing Contract v0.2.x)" | tee -a "$LOGFILE"
+    echo "Regression: Mismatch detection not enforced" | tee -a "$LOGFILE"
+    echo "Check: .acc/state/verify/*.json to see if image digest is tracked" | tee -a "$LOGFILE"
+    echo "==========================================================" | tee -a "$LOGFILE"
 fi
 
 # Now verify demo-app:ok again, then attest should succeed
