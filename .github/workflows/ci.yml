@@ -31,6 +31,22 @@ jobs:
       with:
         go-version: '1.21'
 
+    - name: Validate test scripts syntax
+      run: |
+        echo "Validating bash script syntax..."
+        for script in scripts/*.sh; do
+          echo "Checking $script"
+          bash -n "$script"
+        done
+
+        # Run shellcheck if available (non-blocking)
+        if command -v shellcheck &> /dev/null; then
+          echo "Running shellcheck..."
+          shellcheck scripts/*.sh || echo "⚠️  shellcheck warnings (non-blocking)"
+        else
+          echo "shellcheck not installed, skipping (optional)"
+        fi
+
     - name: Build acc
       run: go build -o acc ./cmd/acc
 

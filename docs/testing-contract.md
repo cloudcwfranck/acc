@@ -405,20 +405,29 @@ acc run <image> [-- command args...]
 
 ## Stable Behaviors Summary
 
-### Exit Codes
+### Exit Code Contract
 
-| Command | Success | Failure | No State/Not Found |
-|---------|---------|---------|-------------------|
-| `acc --help` | 0 | N/A | N/A |
-| `acc init` | 0 | 1 | N/A |
-| `acc build` | 0 (SBOM created) | 1 | N/A |
-| `acc verify` | 0 (pass) | 1 (fail) | 2 (SBOM missing) |
-| `acc attest` | 0 | 1 (mismatch) | N/A |
-| `acc inspect` | 0 | 0 | 0 |
-| `acc trust status` | 0 | 0 | 2 (or 0 with status:unknown) |
-| `acc run` | 0 | 1 (verify fail) | 2 (runtime error) |
-| `acc push` | 0 | 1 | N/A |
-| `acc policy explain` | 0 | varies | varies |
+**CRITICAL**: Exit codes are part of the stable contract. Changing exit codes is a **MAJOR version bump**.
+
+| Command | Exit 0 | Exit 1 | Exit 2 | Notes |
+|---------|--------|--------|--------|-------|
+| `acc --help` | Help displayed | N/A | N/A | All help commands MUST exit 0 |
+| `acc init` | Project created | Initialization failed | N/A | |
+| `acc build` | Build succeeded + SBOM created | Build or SBOM generation failed | N/A | If exit 0, SBOM MUST exist |
+| `acc verify` | Verification passed (`status:"pass"`) | Verification failed (`status:"fail"`) | Cannot complete (SBOM missing, image not found) | **Exit code MUST match `.status` field** |
+| `acc attest` | Attestation created | Mismatch or verification state missing | N/A | MUST fail when image != last verified |
+| `acc inspect` | Inspection succeeded | N/A | N/A | Always exit 0, check `.status` field |
+| `acc trust status` | Status available | N/A | No verification state found | Some versions may return 0 with `status:"unknown"` |
+| `acc run` | Container ran successfully | Verification failed | Runtime error | Verification gate enforced |
+| `acc push` | Push succeeded | Push failed or verification gate blocked | N/A | Verification gate enforced |
+| `acc policy explain` | Explanation available | Varies by implementation | Varies by implementation | |
+
+**Exit Code Semantics**:
+- **Exit 0**: Operation succeeded (for verify: policy passed)
+- **Exit 1**: Operation failed (for verify: policy violations found)
+- **Exit 2**: Operation could not complete (missing prerequisites, no state)
+
+**Regression Detection**: Tests enforce exit codes match JSON output. Mismatches are CRITICAL BUGS.
 
 ### JSON Output Stability
 
