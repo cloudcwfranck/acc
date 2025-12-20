@@ -48,6 +48,7 @@ func Init(projectName string, outputJSON bool) error {
 	dirs := []string{
 		accDir,
 		filepath.Join(accDir, "policy"),
+		filepath.Join(accDir, "profiles"), // v0.2.1: Add profiles directory
 		filepath.Join(accDir, "locks"),
 		filepath.Join(accDir, "cache"),
 	}

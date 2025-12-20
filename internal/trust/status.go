@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -45,19 +46,23 @@ func Status(imageRef string, outputJSON bool) (*StatusResult, error) {
 	// Load verification state
 	state, err := loadVerifyState(imageRef)
 	if err != nil {
-		if outputJSON {
-			// Return minimal result with unknown status
-			result := &StatusResult{
-				SchemaVersion: "v0.2",
-				ImageRef:      imageRef,
-				Status:        "unknown",
-				Violations:    []Violation{},
-				Warnings:      []Violation{},
-				Attestations:  []string{},
-			}
-			return result, nil
+		// v0.2.1: Always return result with status "unknown" (exit code 2)
+		// instead of error (exit code 1) when state not found
+		result := &StatusResult{
+			SchemaVersion: "v0.2",
+			ImageRef:      imageRef,
+			Status:        "unknown",
+			Violations:    []Violation{},
+			Warnings:      []Violation{},
+			Attestations:  []string{},
 		}
-		return nil, fmt.Errorf("no verification state found for image: %s\n\nRemediation:\n  - Run 'acc verify %s' first", imageRef, imageRef)
+
+		if !outputJSON {
+			fmt.Fprintf(os.Stderr, "Warning: No verification state found for image: %s\n", imageRef)
+			fmt.Fprintf(os.Stderr, "Remediation: Run 'acc verify %s' first\n\n", imageRef)
+		}
+
+		return result, nil
 	}
 
 	// Build result from state
@@ -148,16 +153,42 @@ func loadVerifyState(imageRef string) (*VerifyState, error) {
 	return &state, nil
 }
 
-// resolveImageDigest tries to resolve image digest (best effort)
+// resolveImageDigest tries to resolve image digest using container tools
+// v0.2.1: Fixed to properly query Docker/Podman/nerdctl for digest
 func resolveImageDigest(imageRef string) (string, error) {
-	// This is a simplified version - just try to extract from imageRef if it contains @sha256:
+	// First, try to extract from imageRef if it contains @sha256:
 	if strings.Contains(imageRef, "@sha256:") {
 		parts := strings.Split(imageRef, "@sha256:")
 		if len(parts) == 2 {
 			return parts[1], nil
 		}
 	}
-	return "", fmt.Errorf("digest not in reference")
+
+	// Try different container tools to get the digest
+	tools := []struct {
+		name string
+		args []string
+	}{
+		{"docker", []string{"inspect", "--format={{.Id}}", imageRef}},
+		{"podman", []string{"inspect", "--format={{.Id}}", imageRef}},
+		{"nerdctl", []string{"inspect", "--format={{.Id}}", imageRef}},
+	}
+
+	for _, tool := range tools {
+		if _, err := exec.LookPath(tool.name); err == nil {
+			cmd := exec.Command(tool.name, tool.args...)
+			output, err := cmd.Output()
+			if err == nil {
+				digest := strings.TrimSpace(string(output))
+				digest = strings.TrimPrefix(digest, "sha256:")
+				if digest != "" {
+					return digest, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("could not resolve digest for %s", imageRef)
 }
 
 // findAttestations looks for attestation files

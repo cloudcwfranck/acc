@@ -562,3 +562,91 @@ func containsRec(s, substr string) bool {
 	}
 	return false
 }
+
+// v0.2.1 REGRESSION TEST: verify status should be "pass" when allow=true
+func TestVerify_StatusFromAllow(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "acc-verify-status-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	oldDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(oldDir)
+
+	// Create SBOM
+	sbomDir := filepath.Join(".acc", "sbom")
+	os.MkdirAll(sbomDir, 0755)
+	sbomFile := filepath.Join(sbomDir, "status-test.spdx.json")
+	os.WriteFile(sbomFile, []byte("{}"), 0644)
+
+	// Create policy that allows
+	policyDir := filepath.Join(".acc", "policy")
+	os.MkdirAll(policyDir, 0755)
+	policyFile := filepath.Join(policyDir, "allow.rego")
+	os.WriteFile(policyFile, []byte("package acc.policy\nresult := {\"allow\": true}\n"), 0644)
+
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "status-test"},
+		SBOM:    config.SBOMConfig{Format: "spdx"},
+		Policy:  config.PolicyConfig{Mode: "warn"},
+	}
+
+	os.Setenv("ACC_ALLOW_NO_OPA", "1")
+	defer os.Unsetenv("ACC_ALLOW_NO_OPA")
+
+	// Bug: verify returned status:"fail" even when allow:true and violations:[]
+	// Fix: status should be "pass" when PolicyResult.Allow is true
+	result, _ := Verify(cfg, "test:image", false, true, nil)
+
+	if result == nil {
+		t.Fatal("expected result, got nil")
+	}
+
+	if result.PolicyResult == nil {
+		t.Fatal("expected policyResult, got nil")
+	}
+
+	// The key assertion: when allow=true, status should be "pass"
+	if result.PolicyResult.Allow && result.Status != "pass" {
+		t.Errorf("when allow=true, status should be 'pass', got %q", result.Status)
+	}
+}
+
+// v0.2.1 REGRESSION TEST: SBOM detection should work after build
+func TestCheckSBOMExists_Fallback(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "acc-sbom-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	oldDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(oldDir)
+
+	// Create SBOM directory with a different format than expected
+	sbomDir := filepath.Join(".acc", "sbom")
+	os.MkdirAll(sbomDir, 0755)
+
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "test"},
+		SBOM:    config.SBOMConfig{Format: "spdx"},
+	}
+
+	// Bug: If exact match not found, sbomPresent was false even if SBOM exists
+	// Create SBOM with different name
+	sbomFile := filepath.Join(sbomDir, "different-name.cyclonedx.json")
+	os.WriteFile(sbomFile, []byte("{}"), 0644)
+
+	// Fix: Should detect ANY .json file in SBOM directory as fallback
+	present, err := checkSBOMExists(cfg)
+	if err != nil {
+		t.Fatalf("checkSBOMExists failed: %v", err)
+	}
+
+	if !present {
+		t.Error("SBOM should be detected even when name/format doesn't match exactly")
+	}
+}
