@@ -43,9 +43,9 @@ func TestBuild_SBOMVerification(t *testing.T) {
 
 	// Create minimal config
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "test-build"},
-		SBOM:    config.SBOMConfig{Format: "spdx"},
-		Build:   config.BuildConfig{Context: ".", DefaultTag: "latest"},
+		Project:  config.ProjectConfig{Name: "test-build"},
+		SBOM:     config.SBOMConfig{Format: "spdx"},
+		Build:    config.BuildConfig{Context: ".", DefaultTag: "latest"},
 		Registry: config.RegistryConfig{Default: "localhost"},
 	}
 
