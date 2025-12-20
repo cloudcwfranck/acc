@@ -121,7 +121,7 @@ ls -la /tmp/acc-e2e-*/
 
 **Runtime**: ~60-90 seconds
 
-**IMPORTANT**: Tier 1 tests currently FAIL due to 2 known regressions (see `docs/testing-contract.md`). This is expected and documented.
+**Expected Result**: All tests should pass. If any fail, check logs at `/tmp/tier1-*.log`.
 
 #### Run Tier 2: Registry Integration (Optional)
 
@@ -186,7 +186,6 @@ go build -o acc ./cmd/acc
 bash scripts/cli_help_matrix.sh
 
 # 5. Run Tier 1 (comprehensive)
-# Note: Expected to FAIL until regressions fixed
 bash scripts/e2e_smoke.sh
 
 # 6. Check CHANGELOG.md updated
@@ -194,9 +193,8 @@ git diff origin/main...HEAD -- CHANGELOG.md
 ```
 
 **Interpreting Results**:
-- ✅ Tier 0 and Go tests MUST pass
-- ❌ Tier 1 currently FAILS due to regressions (documented in testing-contract.md)
-- ⏭️ Tier 2 is optional (never blocks PRs)
+- ✅ Tier 0, Tier 1, and Go tests MUST all pass
+- ⏭️  Tier 2 is optional (never blocks PRs)
 
 ### 2. Code Formatting
 
