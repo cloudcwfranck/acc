@@ -58,7 +58,7 @@ Download the latest release from [GitHub Releases](https://github.com/cloudcwfra
 **Linux (AMD64):**
 ```bash
 # Download the latest release
-VERSION="0.1.0"
+VERSION="0.2.4"
 curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc_${VERSION}_linux_amd64.tar.gz"
 
 # Verify checksum (recommended)
@@ -77,7 +77,7 @@ acc version
 **macOS (Apple Silicon):**
 ```bash
 # Download the latest release
-VERSION="0.1.0"
+VERSION="0.2.4"
 curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc_${VERSION}_darwin_arm64.tar.gz"
 
 # Verify checksum (recommended)
@@ -96,7 +96,7 @@ acc version
 **macOS (Intel):**
 ```bash
 # Use acc_${VERSION}_darwin_amd64.tar.gz instead
-VERSION="0.1.0"
+VERSION="0.2.4"
 curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/acc_${VERSION}_darwin_amd64.tar.gz"
 curl -LO "https://github.com/cloudcwfranck/acc/releases/download/v${VERSION}/checksums.txt"
 shasum -a 256 -c checksums.txt --ignore-missing
@@ -109,7 +109,7 @@ acc version
 **Windows (AMD64):**
 ```powershell
 # Download the latest release
-$VERSION = "0.1.0"
+$VERSION = "0.2.4"
 Invoke-WebRequest -Uri "https://github.com/cloudcwfranck/acc/releases/download/v$VERSION/acc_${VERSION}_windows_amd64.zip" -OutFile "acc_${VERSION}_windows_amd64.zip"
 
 # Download checksums for verification
@@ -128,7 +128,7 @@ Expand-Archive -Path "acc_${VERSION}_windows_amd64.zip" -DestinationPath .
 **CI/CD Usage:**
 ```bash
 # GitHub Actions / GitLab CI / Jenkins
-VERSION="0.1.0"
+VERSION="0.2.4"
 OS="linux"  # or darwin, windows
 ARCH="amd64"  # or arm64
 
@@ -967,8 +967,9 @@ Per the design specification, `acc` explicitly does NOT:
 
 ### Running tests
 
+**Unit Tests:**
 ```bash
-# Run all tests
+# Run all Go unit tests
 go test ./...
 
 # Run with coverage
@@ -978,6 +979,41 @@ go test -cover ./...
 go test ./internal/config -v
 ```
 
+**CI Test Tiers:**
+
+acc uses a tiered CI testing strategy with increasing scope and runtime:
+
+- **Tier 0: CLI Help Matrix** (~10-20s, blocks PRs)
+  - Validates all commands exist and show help
+  - Runs on every PR and push
+  ```bash
+  bash scripts/cli_help_matrix.sh
+  ```
+
+- **Tier 1: E2E Smoke Tests** (~60-90s, blocks PRs)
+  - Offline end-to-end functional tests
+  - Tests full workflow: init, build, verify, policy, attest, inspect, trust status
+  - Requires: docker, opa, jq, syft
+  ```bash
+  bash scripts/e2e_smoke.sh
+  ```
+
+- **Tier 2: Registry Integration** (optional, never blocks PRs)
+  - Tests push/promote with GitHub Container Registry
+  - Runs on schedule/tags/main only
+  - Auto-skips if credentials unavailable
+  ```bash
+  GHCR_REPO="owner/repo" bash scripts/registry_integration.sh
+  ```
+
+**Testing Contract:**
+
+See [docs/testing-contract.md](docs/testing-contract.md) for:
+- Exit code guarantees
+- JSON output stability
+- Behavioral contracts
+- Script implementation patterns
+
 ### Building
 
 ```bash
@@ -985,7 +1021,7 @@ go test ./internal/config -v
 go build -o acc ./cmd/acc
 
 # Build with version info
-go build -ldflags "-X main.version=v0.1.0 -X main.commit=$(git rev-parse HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o acc ./cmd/acc
+go build -ldflags "-X main.version=v0.2.4 -X main.commit=$(git rev-parse HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o acc ./cmd/acc
 ```
 
 ## Documentation

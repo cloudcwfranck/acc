@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Nothing yet
+
+### Changed
+- Nothing yet
+
 ### Fixed
+- Nothing yet
+
+## [0.2.4] - 2025-12-20
+
+### Fixed - Test Infrastructure & Documentation Quality
 
 #### Test Script Quality - ShellCheck Compliance
 
@@ -64,6 +75,31 @@ set -e
 - Zero impact on existing workflows
 
 **Testing:** All scripts pass `bash -n` validation, Tier 0 tests GREEN
+
+#### Documentation Updates
+
+**Summary**: Updated README and documentation to reflect v0.2.4 release with accurate version references and CI testing information.
+
+**What Changed:**
+- Updated all version references in README.md from v0.1.0 to v0.2.4
+- Added comprehensive "CI Test Tiers" section to README Development guide
+- Documented how to run Tier 0, Tier 1, and Tier 2 tests locally
+- Added reference to testing-contract.md for behavioral guarantees
+
+**Files Changed:**
+- `README.md` - Version references updated, CI test tier documentation added
+- `docs/testing-contract.md` - Already updated with script implementation patterns
+
+**Release Focus:**
+
+v0.2.4 is a **quality and verification release** that demonstrates:
+- ✅ All Tier 0 and Tier 1 CI tests pass reliably
+- ✅ Zero ShellCheck warnings in test scripts
+- ✅ Documentation matches implementation reality
+- ✅ Enterprise-grade CI infrastructure with strict release gates
+- ✅ Clear testing contract with exit code guarantees
+
+**No Product Changes:** This release contains NO changes to acc product behavior, CLI semantics, JSON schemas, or exit codes. All changes are test infrastructure, documentation, and quality improvements.
 
 ## [0.2.3] - 2025-12-20
 
@@ -941,7 +977,12 @@ acc follows [Semantic Versioning](https://semver.org/):
 
 ---
 
-[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/cloudcwfranck/acc/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/cloudcwfranck/acc/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/cloudcwfranck/acc/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/cloudcwfranck/acc/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/cloudcwfranck/acc/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/cloudcwfranck/acc/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/cloudcwfranck/acc/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/cloudcwfranck/acc/compare/v0.1.5...v0.1.6
