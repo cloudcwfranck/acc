@@ -84,19 +84,21 @@ assert_success() {
     shift
     log_command "$@"
 
-    if output=$("$@" 2>&1); then
-        exit_code=$?
-        if [ $exit_code -eq 0 ]; then
-            log_success "$description"
-            echo "$output" >> "$LOGFILE"
-            return 0
-        fi
-    fi
+    local output
+    local exit_code
 
+    output=$("$@" 2>&1)
     exit_code=$?
-    log_error "$description (exit code: $exit_code)"
-    echo "$output" >> "$LOGFILE"
-    return 1
+
+    if [ $exit_code -eq 0 ]; then
+        log_success "$description"
+        echo "$output" >> "$LOGFILE"
+        return 0
+    else
+        log_error "$description (exit code: $exit_code)"
+        echo "$output" >> "$LOGFILE"
+        return 1
+    fi
 }
 
 # Assert that a command fails with specific exit code
@@ -106,11 +108,11 @@ assert_failure() {
     shift 2
     log_command "$@"
 
-    if output=$("$@" 2>&1); then
-        exit_code=0
-    else
-        exit_code=$?
-    fi
+    local output
+    local exit_code
+
+    output=$("$@" 2>&1)
+    exit_code=$?
 
     if [ $exit_code -eq "$expected_exit" ]; then
         log_success "$description (exit $exit_code as expected)"
