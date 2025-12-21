@@ -254,6 +254,44 @@ acc run myimage:latest --cap-add NET_ADMIN
 
 **Important**: `acc run` always verifies before execution. If verification fails, the workload will NOT run.
 
+## Website
+
+The official acc website provides documentation, download links, and release information:
+
+**🌐 [acc.vercel.app](https://acc.vercel.app)** *(deployed after v0.2.6 release)*
+
+### Features
+
+- **Auto-updating downloads** - Latest release with platform detection and checksums
+- **Release history** - Recent releases with changelogs
+- **Quick start guides** - Getting started documentation
+- **Auto-sync with GitHub Releases** - Updates within 5 minutes of new releases
+
+### Local Development
+
+The website is built with Next.js 14 and deployed on Vercel. To run it locally:
+
+```bash
+cd site
+
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Open http://localhost:3000
+```
+
+### Architecture
+
+- **Frontend**: Next.js 14 (App Router, TypeScript)
+- **Backend**: GitHub Releases API + repository content
+- **Hosting**: Vercel
+- **Auto-updates**: ISR (Incremental Static Regeneration) + Deploy Hooks
+
+See [site/README.md](site/README.md) and [docs/website.md](docs/website.md) for deployment and architecture details.
+
 ## SBOM Workflows
 
 acc requires SBOMs for verification. Choose the workflow that fits your build process:
