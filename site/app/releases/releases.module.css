@@ -1,0 +1,135 @@
+.header {
+  text-align: center;
+  margin-bottom: 3rem;
+  padding: 2rem 0;
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.header p {
+  color: rgba(var(--foreground-rgb), 0.7);
+  font-size: 1.125rem;
+}
+
+.releases {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-bottom: 3rem;
+}
+
+.release {
+  padding: 2rem;
+  border: 1px solid rgb(var(--border-rgb));
+  border-radius: 8px;
+  background: rgba(var(--foreground-rgb), 0.02);
+  transition: all 0.2s;
+}
+
+.release:hover {
+  border-color: rgba(var(--primary-rgb), 0.5);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.1);
+}
+
+.releaseHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.releaseName {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.releaseName a {
+  color: rgb(var(--foreground-rgb));
+}
+
+.releaseName a:hover {
+  color: rgb(var(--primary-rgb));
+  text-decoration: none;
+}
+
+.releaseMeta {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-family: var(--font-mono);
+  background: rgb(var(--primary-rgb));
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.date {
+  color: rgba(var(--foreground-rgb), 0.6);
+  font-size: 0.875rem;
+}
+
+.releaseBody {
+  margin-bottom: 1.5rem;
+  color: rgba(var(--foreground-rgb), 0.8);
+  line-height: 1.6;
+}
+
+.releaseBody p {
+  white-space: pre-wrap;
+  font-size: 0.9375rem;
+}
+
+.releaseFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgb(var(--border-rgb));
+}
+
+.viewLink {
+  font-weight: 600;
+  color: rgb(var(--primary-rgb));
+  font-size: 0.9375rem;
+}
+
+.assetsCount {
+  color: rgba(var(--foreground-rgb), 0.5);
+  font-size: 0.875rem;
+}
+
+.moreReleases {
+  text-align: center;
+  padding: 2rem 0;
+  color: rgba(var(--foreground-rgb), 0.7);
+}
+
+.moreReleases a {
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .release {
+    padding: 1.5rem;
+  }
+
+  .releaseName {
+    font-size: 1.25rem;
+  }
+
+  .releaseFooter {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

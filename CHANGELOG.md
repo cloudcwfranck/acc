@@ -16,6 +16,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.2.6] - 2025-12-21
+
+### Added - Website & Documentation
+
+#### Official Website Launch (Vercel + GitHub Releases Backend)
+
+**Summary**: Launched official acc website with auto-updating release information, deployed on Vercel with GitHub Releases as the backend.
+
+**What's New:**
+
+- ✅ **Official website** - Next.js 14 website deployed on Vercel at `site/`
+- ✅ **Auto-updating releases** - ISR (Incremental Static Regeneration) + deploy hooks for real-time updates
+- ✅ **GitHub Releases backend** - No separate server, uses GitHub API as data source
+- ✅ **Download page** - Platform detection, checksums, grouped downloads by OS/arch
+- ✅ **Documentation pages** - Quick start guide, how-to documentation
+- ✅ **Release history** - Recent releases with changelogs
+- ✅ **Security headers** - CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
+- ✅ **Deploy automation** - GitHub Actions workflow triggers Vercel deployment on release
+
+**Website Architecture:**
+
+- **Frontend**: Next.js 14 (App Router, TypeScript, React Server Components)
+- **Backend**: GitHub Releases API + repository content (unauthenticated)
+- **Hosting**: Vercel
+- **Auto-updates**: ISR with 5-minute revalidation + deploy hooks on release publish
+- **Pages**: Homepage, Download, Docs, Releases
+- **Security**: Strict CSP, security headers, no inline scripts, HTTPS-only
+
+**Auto-Update Mechanism:**
+
+1. **ISR (Incremental Static Regeneration)**:
+   - Release data fetched from GitHub API with `revalidate: 300` (5 minutes)
+   - Vercel automatically regenerates pages when data changes
+   - Fallback if deploy hook not configured
+
+2. **Deploy Hook on Release**:
+   - GitHub Actions workflow `.github/workflows/site-deploy.yml` runs on release publish
+   - Triggers Vercel deployment via webhook
+   - Site rebuilds immediately with new release
+
+**Files Added:**
+
+- `site/package.json` - Next.js dependencies and scripts
+- `site/tsconfig.json` - TypeScript configuration
+- `site/next.config.js` - Security headers and build configuration
+- `site/lib/github.ts` - GitHub API helpers with ISR
+- `site/app/layout.tsx` - Root layout with metadata
+- `site/app/page.tsx` - Homepage (hero, features, how it works)
+- `site/app/download/page.tsx` - Download page with platform detection
+- `site/app/docs/page.tsx` - Quick start documentation
+- `site/app/releases/page.tsx` - Release history listing
+- `site/components/Navigation.tsx` - Sticky header navigation
+- `site/components/Footer.tsx` - Footer with links
+- `site/components/*.module.css` - Component-scoped styles
+- `site/app/globals.css` - Global styles with dark/light mode
+- `site/public/demo/` - Demo asset placeholder
+- `.github/workflows/site-deploy.yml` - Vercel deploy hook trigger
+- `site/README.md` - Website setup and deployment documentation
+- `docs/website.md` - Website architecture documentation
+
+**Release Focus:**
+
+v0.2.6 is a **website and documentation release** that:
+- ✅ Launches official acc website on Vercel
+- ✅ Provides auto-updating download and release pages
+- ✅ Documents website architecture and deployment process
+- ✅ Demonstrates production-grade Next.js + Vercel deployment
+
+**No Product Changes:** This release contains NO changes to acc product behavior, CLI semantics, JSON schemas, or exit codes. All changes are website infrastructure and documentation.
+
+**No Test Changes:** This release contains NO changes to test scripts or CI workflows for the CLI tool. All test infrastructure remains unchanged from v0.2.5.
+
 ## [0.2.5] - 2025-12-20
 
 ### Fixed - Documentation Accuracy
@@ -1017,7 +1089,8 @@ acc follows [Semantic Versioning](https://semver.org/):
 
 ---
 
-[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/cloudcwfranck/acc/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/cloudcwfranck/acc/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/cloudcwfranck/acc/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/cloudcwfranck/acc/compare/v0.2.2...v0.2.3
