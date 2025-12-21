@@ -24,15 +24,32 @@ export default function Home() {
       {/* Demo Section */}
       <section className="container">
         <div className="demo-container">
-          {/* Placeholder for demo - replace with actual demo.gif or demo.svg */}
           <div className="demo-placeholder">
-            <p>
-              📽️ Demo will be displayed here
-              <br />
-              <br />
-              Add your terminal recording to:
-              <br />
-              <code>site/public/demo/demo.gif</code> or <code>demo.svg</code>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎬</div>
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>
+              Interactive Demo
+            </h3>
+            <p style={{ marginBottom: '2rem', fontSize: '1rem', lineHeight: '1.6' }}>
+              See acc in action with a terminal walkthrough showing policy
+              verification, trust inspection, and attestation workflows.
+            </p>
+            <Link href="/docs" className="btn btn-primary">
+              View Quick Start Guide
+            </Link>
+            <p
+              style={{
+                marginTop: '2rem',
+                fontSize: '0.875rem',
+                color: 'rgba(var(--foreground-rgb), 0.4)',
+              }}
+            >
+              Terminal demo recording coming soon •{' '}
+              <a
+                href="https://github.com/cloudcwfranck/acc"
+                style={{ color: 'rgb(var(--primary-rgb))' }}
+              >
+                View on GitHub
+              </a>
             </p>
           </div>
         </div>
@@ -53,8 +70,8 @@ export default function Home() {
             <div className="feature">
               <h3>Explainable Findings</h3>
               <p>
-                Every violation includes rule name, severity, and remediation
-                guidance—no black-box decisions.
+                Every violation includes rule name, severity, and clear
+                descriptions—no black-box decisions.
               </p>
             </div>
             <div className="feature">

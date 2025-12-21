@@ -1,0 +1,57 @@
+name: Website CI
+
+on:
+  pull_request:
+    paths:
+      - 'site/**'
+      - '.github/workflows/site-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'site/**'
+      - '.github/workflows/site-ci.yml'
+
+jobs:
+  build-and-test:
+    name: Build and Test Website
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: site
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint code
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build website
+        run: npm run build
+        env:
+          # Use public API without token for CI builds
+          NODE_ENV: production
+
+      - name: Check for build artifacts
+        run: |
+          if [ ! -d ".next" ]; then
+            echo "Error: .next directory not found after build"
+            exit 1
+          fi
+          echo "Build successful, artifacts created"
