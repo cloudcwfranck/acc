@@ -16,6 +16,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Nothing yet
 
+## [0.2.5] - 2025-12-20
+
+### Fixed - Documentation Accuracy
+
+#### Post-Release Verification & Documentation Refresh
+
+**Summary**: Corrected stale documentation references and verified all test tiers pass reliably after v0.2.3/v0.2.4 regression fixes.
+
+**What Changed:**
+- Updated CONTRIBUTING.md to remove outdated "known regressions" warnings
+- Removed stale references to Tier 1 test failures (regressions fixed in v0.2.3)
+- Clarified that all test tiers (0, 1, Go unit tests) now pass reliably
+- Updated pre-push checklist to reflect current expected behavior
+
+**Documentation Corrections:**
+- CONTRIBUTING.md line 124: Removed "Tier 1 tests currently FAIL" warning (outdated)
+- CONTRIBUTING.md line 189: Removed "Expected to FAIL" comment (outdated)
+- CONTRIBUTING.md line 198: Updated to state "MUST all pass" instead of "currently FAILS"
+
+**Verification Performed:**
+- ✅ All Go unit tests pass
+- ✅ Tier 0 (CLI Help Matrix) passes
+- ✅ Tier 1 (E2E Smoke Tests) passes (verified in CI)
+- ✅ Documentation now matches implementation reality
+
+**Files Changed:**
+- `CONTRIBUTING.md` - Removed stale regression warnings, updated test expectations
+
+**Release Focus:**
+
+v0.2.5 is a **post-release documentation accuracy release** that:
+- ✅ Confirms all regressions from v0.2.2 are fixed
+- ✅ Updates contributor documentation to match reality
+- ✅ Verifies test infrastructure stability
+- ✅ Ensures clear guidance for new contributors
+
+**No Product Changes:** This release contains NO changes to acc product behavior, CLI semantics, JSON schemas, or exit codes. All changes are documentation accuracy improvements.
+
+**No Test Changes:** This release contains NO changes to test scripts or CI workflows. All test infrastructure remains unchanged from v0.2.4.
+
 ## [0.2.4] - 2025-12-20
 
 ### Fixed - Test Infrastructure & Documentation Quality
@@ -977,7 +1017,8 @@ acc follows [Semantic Versioning](https://semver.org/):
 
 ---
 
-[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/cloudcwfranck/acc/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/cloudcwfranck/acc/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/cloudcwfranck/acc/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/cloudcwfranck/acc/compare/v0.2.1...v0.2.2
