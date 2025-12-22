@@ -4,69 +4,40 @@ This directory contains demo assets for the acc website homepage.
 
 ## Expected Files
 
-The homepage (`site/app/page.tsx`) looks for demo files in this order:
+The homepage (`site/app/page.tsx`) uses an embedded asciinema player that can load demos from:
 
-1. `demo.gif` (preferred) - Animated GIF of terminal demo
-2. `demo.svg` - Static or animated SVG
+1. **asciinema.org** (preferred) - Set `NEXT_PUBLIC_ASCIINEMA_ID` in `.env.local`
+2. **Local cast file** - `demo.cast` in this directory (fallback)
 
-## Creating Demo Assets
+## Creating the Demo
 
-### Option 1: Terminal Recording → GIF
+The demo is created using the infrastructure in the root `demo/` directory:
 
-**Using asciinema + agg:**
+### Option 1: Record and Upload to asciinema.org (Recommended)
 
 ```bash
-# Install asciinema (terminal recorder)
-# macOS:
-brew install asciinema
+# From repo root
+bash demo/record.sh
 
-# Linux:
-sudo apt-get install asciinema
+# Upload to asciinema.org
+asciinema upload demo/demo.cast
 
-# Install agg (asciicast to GIF converter)
-cargo install --git https://github.com/asciinema/agg
+# Copy the ID from the URL (e.g., https://asciinema.org/a/ABC123 → ID is ABC123)
 
-# Record terminal session
-asciinema rec demo.cast
-
-# Convert to GIF
-agg demo.cast demo.gif
-
-# Copy to website
-cp demo.gif site/public/demo/
+# Create .env.local in site/
+echo "NEXT_PUBLIC_ASCIINEMA_ID=ABC123" > site/.env.local
 ```
 
-**Using ttygif:**
+### Option 2: Use Local Cast File
 
 ```bash
-# Install ttygif
-brew install ttygif  # macOS
-# or build from source: https://github.com/icholy/ttygif
+# From repo root
+bash demo/record.sh
 
-# Record terminal
-ttyrec demo.ttyrec
+# Copy cast file to this directory
+cp demo/demo.cast site/public/demo/
 
-# Convert to GIF
-ttygif demo.ttyrec
-
-# Rename and copy
-mv tty.gif demo.gif
-cp demo.gif site/public/demo/
-```
-
-### Option 2: Static SVG
-
-Create a styled SVG mockup of terminal output:
-
-```bash
-# Use termtosvg
-pip install termtosvg
-
-# Record and convert to SVG
-termtosvg demo.svg
-
-# Copy to website
-cp demo.svg site/public/demo/
+# No .env.local needed - player auto-detects local file
 ```
 
 ## Recommended Demo Flow
@@ -80,43 +51,35 @@ Show a 30-60 second workflow demonstrating:
 5. `acc policy explain` - Show why it failed
 6. `acc attest demo-app:ok` - Create attestation
 
-## File Size Recommendations
+## Prerequisites for Recording
 
-- **GIF**: < 5 MB (optimize with gifsicle or ImageOptim)
-- **SVG**: < 500 KB
+See `demo/README.md` in the repo root for full prerequisites:
 
-## Optimization
+- Docker (for running the demo workflow)
+- asciinema (for recording)
+- OPA v0.66.0
+- syft
+- jq
 
-### GIF Optimization
+## Demo Details
 
-```bash
-# Install gifsicle
-brew install gifsicle  # macOS
-sudo apt-get install gifsicle  # Linux
+- **Format**: asciinema cast v2
+- **Terminal size**: 100x30
+- **Duration**: 60-90 seconds
+- **Commands shown**: 6 core workflows
 
-# Optimize GIF (reduce size by ~50%)
-gifsicle -O3 --colors 256 demo.gif -o demo-optimized.gif
-```
-
-### SVG Optimization
-
-```bash
-# Install svgo
-npm install -g svgo
-
-# Optimize SVG
-svgo demo.svg -o demo-optimized.svg
-```
+The demo validates deterministic exit codes and machine-readable JSON output.
 
 ## Current Status
 
-**No demo assets currently present.** The homepage shows a placeholder message.
+A placeholder `demo.cast` file exists. To create the actual recording:
 
-To add a demo:
-1. Create `demo.gif` or `demo.svg` following the instructions above
-2. Place in `site/public/demo/`
-3. Rebuild the site (`npm run build`) or wait for auto-refresh in dev mode
-4. The homepage will automatically display the demo
+1. **Validate** the demo works: `bash demo/run.sh` (requires Docker)
+2. **Record** the demo: `bash demo/record.sh`
+3. **Publish** to asciinema.org OR copy to this directory
+4. **Update** `.env.local` with ID (if using asciinema.org)
+
+The homepage will automatically embed the demo using the asciinema player.
 
 ## References
 
