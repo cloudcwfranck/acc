@@ -547,7 +547,7 @@ warnings:
 
 ### Trust Status Command
 
-View verification status with profile information:
+View verification status with profile information (v0.2.7):
 
 ```bash
 $ acc trust status myapp:latest
@@ -568,10 +568,38 @@ Warnings (2 ignored):
   [informational] old-base-image: Base image is 30 days old
 ```
 
-**Exit codes:**
-- `0` - Verified (pass)
-- `1` - Not verified (fail)
-- `2` - No verification state found
+**Exit codes (PRESERVED - unchanged):**
+- `0` - Trust status is pass
+- `1` - Trust status is fail or warn
+- `2` - Trust status is unknown (cannot compute)
+
+**JSON output (v0.2.7):**
+```bash
+$ acc trust status --json myapp:latest
+{
+  "schemaVersion": "v0.2",
+  "imageRef": "myapp:latest",
+  "status": "pass",
+  "sbomPresent": true,
+  "violations": [],
+  "warnings": [
+    {
+      "rule": "missing-healthcheck",
+      "severity": "low",
+      "message": "Container lacks health check"
+    }
+  ],
+  "attestations": [
+    ".acc/attestations/abc123456789/20250120-103000-attestation.json"
+  ],
+  "timestamp": "2025-01-20T10:30:00Z"
+}
+```
+
+**Per-Image Isolation (v0.2.7):**
+- Trust status is scoped to specific image digests
+- Attestations shown are only for the requested image
+- No cross-image state leakage between different images
 
 ### Backward Compatibility
 
@@ -1029,7 +1057,7 @@ acc inspect myapp:latest --json
 
 ### Create attestations
 
-Attestations capture verification results as deterministic, auditable artifacts:
+Attestations capture verification results as deterministic, auditable artifacts (v0.2.7):
 
 ```bash
 # First, build and verify the image
@@ -1044,15 +1072,20 @@ acc attest myapp:latest
 
 # View attestation in JSON
 acc attest myapp:latest --json
+
+# View trust status (shows attestation)
+acc trust status myapp:latest
 ```
 
-**How attestations work:**
+**How attestations work (v0.2.7):**
 
 1. **Requires verification state** - `acc attest` will fail if `.acc/state/last_verify.json` doesn't exist
-2. **Image reference validation** - Ensures the image matches the last verified image
-3. **Canonical hashing** - Creates deterministic hash of verification results with sorted violations
-4. **Structured storage** - Saves to `.acc/attestations/<image>/<timestamp>-attestation.json`
-5. **State tracking** - Updates `.acc/state/last_attestation.json` pointer
+2. **Digest-based matching** - Uses image digest comparison (not tag strings) to ensure safety
+3. **Image mismatch protection** - Prevents attesting wrong image even if tags are reused
+4. **Canonical hashing** - Creates deterministic hash of verification results with sorted violations
+5. **Per-image storage** - Saves to `.acc/attestations/<digest-prefix>/<timestamp>-attestation.json`
+6. **State tracking** - Updates `.acc/state/last_attestation.json` pointer
+7. **Trust integration** - Attestations appear in `acc trust status` for that specific image only
 
 **Attestation schema:**
 

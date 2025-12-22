@@ -205,7 +205,7 @@ acc policy explain --json
 
 #### 6. Attest UX Contract
 
-**Scenario 1**: Attest after verifying different image (mismatch)
+**Scenario 1**: Attest after verifying different image (mismatch) (v0.2.7)
 ```bash
 acc verify image-a
 acc attest image-b   # Should FAIL
@@ -214,9 +214,10 @@ acc attest image-b   # Should FAIL
 **Guarantees**:
 - MUST exit non-zero (image mismatch)
 - MUST NOT print "Creating attestation" message
-- Error message SHOULD indicate image mismatch
+- Error message MUST indicate digest mismatch and provide remediation steps
+- Comparison MUST use digest matching (not tag string matching)
 
-**Scenario 2**: Attest after verifying same image (success)
+**Scenario 2**: Attest after verifying same image (success) (v0.2.7)
 ```bash
 acc verify image-a
 acc attest image-a   # Should SUCCEED
@@ -225,11 +226,29 @@ acc attest image-a   # Should SUCCEED
 **Guarantees**:
 - MUST exit 0
 - MUST print "Creating attestation" message to stdout/stderr
-- MUST create attestation file in `.acc/attestations/`
+- MUST create attestation file in `.acc/attestations/<digest>/`
+- Attestation stored per-image digest (12-char digest prefix as directory name)
+- Attestation appears in `acc trust status` output for that specific image only
+
+**Digest Matching** (v0.2.7):
+- Attestation safety uses digest comparison, not tag comparison
+- Prevents accidental attestation of wrong image even if tags are reused
+- If digest cannot be resolved, falls back to tag string comparison
+
+**Attestation Storage** (v0.2.7):
+- Location: `.acc/attestations/<digest-prefix>/YYYYMMDD-HHMMSS-attestation.json`
+- Digest prefix: First 12 characters of image digest
+- Per-image isolation: Each image digest has its own directory
+- Multiple attestations: Same image can have multiple timestamped attestations
+
+**Integration with Trust Status** (v0.2.7):
+- After `acc attest demo-app:ok`, `acc trust status demo-app:ok` shows the attestation
+- Attestations are per-image: `acc trust status demo-app:root` will NOT show demo-app:ok attestations
 
 **Breaking Changes**:
 - Changing UX messages is a MINOR version bump
 - Removing mismatch detection is a MAJOR version bump (security regression)
+- v0.2.7 clarifies digest-based matching (behavior unchanged, documentation improved)
 
 #### 7. Inspect Per-Image State
 
@@ -257,29 +276,53 @@ acc inspect --json <image>
 acc trust status --json <image>
 ```
 
-**Guarantees**:
-- MUST return verification status for the specific image
+**Guarantees** (v0.2.7):
+- MUST return deterministic JSON with stable keys
+- MUST reflect per-image state (no leakage between different image digests)
 - MUST handle "never verified" case gracefully
 
-**Exit Codes**:
-- 0: Status available (pass or fail)
-- 2: No verification state found (never verified)
-- Implementation note: Some versions may return exit 0 with `status: "unknown"`
+**Exit Codes** (PRESERVED - unchanged in v0.2.7):
+- 0: Trust status is pass
+- 1: Trust status is fail or warn
+- 2: Trust status is unknown (cannot compute - missing state, corrupted data, missing image)
 
-**JSON Schema**:
+**JSON Schema** (v0.2.7):
 ```json
 {
   "schemaVersion": "v0.2",
   "imageRef": string,
   "status": "pass|fail|unknown",
+  "sbomPresent": boolean,
   "violations": array,
-  "warnings": array
+  "warnings": array,
+  "attestations": array,
+  "timestamp": string
 }
 ```
+
+**Required Fields** (v0.2.7):
+- `schemaVersion`: Always "v0.2"
+- `imageRef`: Image reference provided
+- `status`: One of "pass", "fail", "unknown"
+- `sbomPresent`: Boolean (always set, never null)
+- `violations`: Array of violations (empty array [] if none, never null)
+- `warnings`: Array of warnings (empty array [] if none, never null)
+- `attestations`: Array of attestation paths for this specific image (per-image isolation)
+- `timestamp`: ISO 8601 timestamp (empty string "" for unknown status)
+
+**Optional Fields**:
+- `profileUsed`: Policy profile name (if applicable)
+
+**Per-Image Isolation** (v0.2.7):
+- Attestations are scoped to specific image digests
+- `acc trust status demo-app:ok` only shows attestations for demo-app:ok
+- `acc trust status demo-app:root` only shows attestations for demo-app:root
+- No cross-image state leakage
 
 **Breaking Changes**:
 - Changing "never verified" exit code is a MINOR version bump (document behavior)
 - Changing JSON schema is a MAJOR version bump
+- v0.2.7 added required fields: sbomPresent, attestations, timestamp (backward compatible)
 
 #### 9. Run Command
 
@@ -344,7 +387,7 @@ acc run <image> [-- command args...]
 | `acc verify` | Verification passed (`status:"pass"`) | Verification failed (`status:"fail"`) | Cannot complete (SBOM missing, image not found) | **Exit code MUST match `.status` field** |
 | `acc attest` | Attestation created | Mismatch or verification state missing | N/A | MUST fail when image != last verified |
 | `acc inspect` | Inspection succeeded | N/A | N/A | Always exit 0, check `.status` field |
-| `acc trust status` | Status available | N/A | No verification state found | Some versions may return 0 with `status:"unknown"` |
+| `acc trust status` | Status is pass | Status is fail or warn | Status is unknown (cannot compute) | Exit codes unchanged in v0.2.7 |
 | `acc run` | Container ran successfully | Verification failed | Runtime error | Verification gate enforced |
 | `acc push` | Push succeeded | Push failed or verification gate blocked | N/A | Verification gate enforced |
 | `acc policy explain` | Explanation available | Varies by implementation | Varies by implementation | |
@@ -688,6 +731,25 @@ Update this contract when:
 
 ## Version History
 
+### v0.2.7 (2025-12-22)
+- **Contract**: Trust Status JSON schema stabilized with required fields
+  - `sbomPresent` MUST always be set as boolean (never null)
+  - `violations`, `warnings`, `attestations` MUST be arrays (never null)
+  - `timestamp` MUST be string (empty "" for unknown status)
+- **Contract**: Trust Status exit codes documented (PRESERVED - unchanged)
+  - Exit 0: status is pass
+  - Exit 1: status is fail or warn
+  - Exit 2: status is unknown (cannot compute)
+- **Contract**: Trust Status per-image attestation isolation
+  - Attestations scoped to specific image digests
+  - No cross-image attestation leakage
+- **Contract**: Attest digest-based matching documented
+  - Uses digest comparison (not tag string matching)
+  - Provides clear remediation messages on mismatch
+- **Added**: Unit tests for trust package (9 tests)
+- **Added**: Golden tests for trust status JSON output (4 tests)
+- **Enhanced**: E2E tests validate trust/attest integration and per-image isolation
+
 ### v0.2.3 (2025-12-20)
 - **Added**: Tier 0/1/2 test infrastructure
 - **Added**: Testing Contract document
@@ -716,6 +778,6 @@ Update this contract when:
 
 ---
 
-**Last Updated**: 2025-12-20
-**Contract Version**: v0.2.3
+**Last Updated**: 2025-12-22
+**Contract Version**: v0.2.7
 **Maintained By**: acc core team

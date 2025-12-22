@@ -155,12 +155,37 @@ assert_json_has_field() {
     local jq_expr="$2"
     local description="$3"
 
-    if echo "$json" | jq -e "$jq_expr" > /dev/null 2>&1; then
-        log_success "$description: field $jq_expr exists"
-        return 0
+    # Check if this is a nested field (has dot after removing leading dot)
+    # .result.input -> result.input (has dot) = nested
+    # .sbomPresent -> sbomPresent (no dot) = top-level
+    local without_leading_dot="${jq_expr#.}"
+
+    if [[ "$without_leading_dot" == *.* ]]; then
+        # Nested field like .result.input
+        # Split on last dot: .result.input -> .result and input
+        local parent="${jq_expr%.*}"   # .result
+        local field="${jq_expr##*.}"   # input
+
+        # Check if parent has the child field
+        if echo "$json" | jq -e "$parent | has(\"$field\")" > /dev/null 2>&1; then
+            log_success "$description: field $jq_expr exists"
+            return 0
+        else
+            log_error "$description: field $jq_expr missing"
+            return 1
+        fi
     else
-        log_error "$description: field $jq_expr missing"
-        return 1
+        # Top-level field like .sbomPresent
+        local field_name=$(echo "$jq_expr" | sed 's/^\.//')
+
+        # Use 'has()' to check if field exists (works for false values too)
+        if echo "$json" | jq -e "has(\"$field_name\")" > /dev/null 2>&1; then
+            log_success "$description: field $jq_expr exists"
+            return 0
+        else
+            log_error "$description: field $jq_expr missing"
+            return 1
+        fi
     fi
 }
 
@@ -492,27 +517,91 @@ fi
 log_section "TEST 7: Trust Status"
 
 # Trust status for demo-app:ok
-status_ok_output=$($ACC_BIN trust status --json demo-app:ok 2>&1) || true
+set +e
+status_ok_output=$($ACC_BIN trust status --json demo-app:ok 2>&1)
 status_ok_exit=$?
+set -e
 
 log "acc trust status demo-app:ok: exit $status_ok_exit"
+if [ $status_ok_exit -eq 0 ]; then
+    log_success "trust status demo-app:ok: exit 0 (pass status)"
+else
+    log_error "trust status demo-app:ok: exit $status_ok_exit (expected 0 for pass)"
+fi
+
 if echo "$status_ok_output" | jq empty 2>/dev/null; then
     log_success "Valid JSON output from trust status demo-app:ok"
 
+    # v0.2.7: Verify required JSON schema fields
+    assert_json_has_field "$status_ok_output" ".schemaVersion" \
+        "trust status demo-app:ok has schemaVersion"
+    assert_json_has_field "$status_ok_output" ".imageRef" \
+        "trust status demo-app:ok has imageRef"
+    assert_json_has_field "$status_ok_output" ".status" \
+        "trust status demo-app:ok has status"
+    assert_json_has_field "$status_ok_output" ".sbomPresent" \
+        "trust status demo-app:ok has sbomPresent"
+    assert_json_has_field "$status_ok_output" ".violations" \
+        "trust status demo-app:ok has violations"
+    assert_json_has_field "$status_ok_output" ".warnings" \
+        "trust status demo-app:ok has warnings"
+    assert_json_has_field "$status_ok_output" ".attestations" \
+        "trust status demo-app:ok has attestations"
+    assert_json_has_field "$status_ok_output" ".timestamp" \
+        "trust status demo-app:ok has timestamp"
+
+    # Verify status value
     assert_json_field "$status_ok_output" ".status" "pass" \
-        "trust status demo-app:ok"
+        "trust status demo-app:ok status"
+
+    # v0.2.7: Check that attestation was recorded (after we attested it in TEST 5)
+    attest_count=$(echo "$status_ok_output" | jq -r '.attestations | length')
+    if [ "$attest_count" -gt 0 ]; then
+        log_success "trust status demo-app:ok shows $attest_count attestation(s)"
+    else
+        log "⚠️  trust status demo-app:ok shows no attestations (may be expected if attest failed earlier)"
+    fi
+else
+    log_error "Invalid JSON output from trust status demo-app:ok"
 fi
 
 # Trust status for demo-app:root
-status_root_output=$($ACC_BIN trust status --json demo-app:root 2>&1) || true
+set +e
+status_root_output=$($ACC_BIN trust status --json demo-app:root 2>&1)
 status_root_exit=$?
+set -e
 
 log "acc trust status demo-app:root: exit $status_root_exit"
+if [ $status_root_exit -eq 1 ]; then
+    log_success "trust status demo-app:root: exit 1 (fail status)"
+else
+    log_error "trust status demo-app:root: exit $status_root_exit (expected 1 for fail)"
+fi
+
 if echo "$status_root_output" | jq empty 2>/dev/null; then
     log_success "Valid JSON output from trust status demo-app:root"
 
+    # v0.2.7: Verify required JSON schema fields
+    assert_json_has_field "$status_root_output" ".schemaVersion" \
+        "trust status demo-app:root has schemaVersion"
+    assert_json_has_field "$status_root_output" ".status" \
+        "trust status demo-app:root has status"
+    assert_json_has_field "$status_root_output" ".sbomPresent" \
+        "trust status demo-app:root has sbomPresent"
+
+    # Verify status value
     assert_json_field "$status_root_output" ".status" "fail" \
-        "trust status demo-app:root"
+        "trust status demo-app:root status"
+
+    # v0.2.7: Per-image isolation - demo-app:root should have 0 attestations
+    attest_count=$(echo "$status_root_output" | jq -r '.attestations | length')
+    if [ "$attest_count" -eq 0 ]; then
+        log_success "trust status demo-app:root shows 0 attestations (per-image isolation)"
+    else
+        log_error "trust status demo-app:root shows $attest_count attestations (expected 0 - per-image isolation failure)"
+    fi
+else
+    log_error "Invalid JSON output from trust status demo-app:root"
 fi
 
 # Build a third image that has never been verified
@@ -524,20 +613,33 @@ EOF
 
 docker build -f Dockerfile.never -t demo-app:never-verified . > /dev/null 2>&1
 
-# Trust status for never-verified image (should return exit code 2 or specific "unknown" status)
-status_never_output=$($ACC_BIN trust status --json demo-app:never-verified 2>&1) || true
+# Trust status for never-verified image (should return exit code 2 for unknown status)
+set +e
+status_never_output=$($ACC_BIN trust status --json demo-app:never-verified 2>&1)
 status_never_exit=$?
+set -e
 
 log "acc trust status demo-app:never-verified: exit $status_never_exit"
 if [ $status_never_exit -eq 2 ]; then
-    log_success "trust status for never-verified image: exit 2 (no state found)"
-elif [ $status_never_exit -eq 0 ]; then
-    # Check what status is returned
-    actual_status=$(echo "$status_never_output" | jq -r '.status' 2>/dev/null || echo "unknown")
-    log_success "trust status for never-verified image: exit 0 with status:$actual_status"
-    log "Note: Contract allows exit 0 OR exit 2 for never-verified images"
+    log_success "trust status for never-verified image: exit 2 (unknown status)"
 else
-    log "⚠️  trust status for never-verified image: exit $status_never_exit (documenting behavior)"
+    log_error "trust status for never-verified image: exit $status_never_exit (expected 2 for unknown)"
+fi
+
+# v0.2.7: Verify unknown status has proper JSON schema
+if echo "$status_never_output" | jq empty 2>/dev/null; then
+    assert_json_field "$status_never_output" ".status" "unknown" \
+        "trust status demo-app:never-verified status"
+    assert_json_has_field "$status_never_output" ".sbomPresent" \
+        "trust status demo-app:never-verified has sbomPresent"
+
+    # Verify sbomPresent is false for unknown
+    sbom_present=$(echo "$status_never_output" | jq -r '.sbomPresent')
+    if [ "$sbom_present" == "false" ]; then
+        log_success "trust status demo-app:never-verified has sbomPresent: false"
+    else
+        log_error "trust status demo-app:never-verified has sbomPresent: $sbom_present (expected false)"
+    fi
 fi
 
 # ============================================================================
