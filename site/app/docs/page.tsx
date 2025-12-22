@@ -65,7 +65,7 @@ echo $?`}</pre>
             <h3>Policies</h3>
             <p>
               Write policies in Rego (OPA) stored in <code>.acc/policy/</code>.
-              Policies define what's allowed and what's not.
+              Policies define what&apos;s allowed and what&apos;s not.
             </p>
           </div>
           <div className={styles.concept}>
