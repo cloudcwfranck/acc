@@ -238,6 +238,120 @@ This release enhances the **website infrastructure** to enterprise-grade standar
 
 **No CLI Test Changes:** This release contains NO changes to CLI test scripts or CI workflows for the acc tool. Website tests are isolated under `site/__tests__/`.
 
+#### Release Pipeline & Website Hardening
+
+**Summary**: Added enterprise-grade release validation and comprehensive website testing to ensure release integrity and operational reliability.
+
+**What's New:**
+
+- ✅ **Automated release validation** - CI blocks incomplete releases before publication
+- ✅ **Checksum verification required** - All platform archives must have valid SHA256 checksums
+- ✅ **Download verification guidance** - Install snippet includes checksum verification commands
+- ✅ **Website smoke tests** - Health endpoint, download page, and status page validation
+- ✅ **Unit test execution** - 27 Jest tests run on every PR to validate release logic
+
+**Release Pipeline Improvements:**
+
+**Validation Job** (`.github/workflows/release.yml`):
+- Added `validate` job that runs after `build` job
+- Validates `checksums.txt` exists
+- Ensures all 5 platform archives have checksums (Linux/macOS/Windows × AMD64/ARM64)
+- Runs `sha256sum -c` to verify checksums match actual files
+- Confirms minimum platform coverage
+- **Blocks release publication** if validation fails
+- Provides actionable error messages for maintainers
+
+**Build Job Output:**
+- Added `version` output to build job for artifact download coordination
+- Enables validate job to download correct artifacts
+
+**Website Download Hardening:**
+
+**Install Snippet Enhancement** (`site/app/download/page.tsx`):
+- Downloads `checksums.txt` in installation commands
+- Shows SHA256 verification commands when checksums available:
+  - `sha256sum -c checksums.txt --ignore-missing` (Linux)
+  - `shasum -a 256 -c checksums.txt --ignore-missing` (macOS)
+- Displays warning when checksums missing: `# ⚠️ Checksums not available for this release`
+- Adapts dynamically based on release completeness
+
+**Site CI Enhancements:**
+
+**Unit Tests** (`.github/workflows/site-ci.yml`):
+- Added test execution to `build-and-test` job
+- Runs `npm test -- --ci --coverage --maxWorkers=2`
+- Validates stable/prerelease selection logic (27 tests)
+- Fails build if tests fail (`continue-on-error: false`)
+
+**Smoke Tests Job**:
+- Added new `smoke-tests` job that runs after build
+- Starts production Next.js server
+- Validates `/api/health` endpoint:
+  - Checks JSON structure (status, github fields)
+  - Validates status values (ok/degraded/down)
+  - Ensures health endpoint responds correctly
+- Tests download page loads with "Download" heading
+- Tests status page loads successfully
+- Graceful cleanup with server process management
+
+**Documentation Updates:**
+
+**site/README.md** - Added "Release Pipeline & Validation" section:
+- Release artifact requirements checklist
+- Automated validation process explanation
+- Manual verification commands (`gh release view`, `sha256sum -c`)
+- Website integration details (auto-updates, download verification, health monitoring)
+- CI/CD workflow documentation
+- Verifying release completeness instructions
+
+**README.md** - Expanded "Website" section:
+- Enterprise features overview (stable-by-default, prerelease support, checksum verification)
+- "How It Stays Up-to-Date" subsection:
+  - Dual update mechanism (deploy hooks + ISR) explanation
+  - Result: Updates within 1 minute
+- "Release Integrity" subsection:
+  - Checksums required, automated validation
+  - Download verification, health monitoring
+  - User experience for complete vs incomplete releases
+- Testing section (Jest + smoke tests)
+
+**Files Changed:**
+
+- `.github/workflows/release.yml` - Added validation job with checksum verification
+- `.github/workflows/site-ci.yml` - Added unit tests + smoke tests job
+- `site/app/download/page.tsx` - Enhanced install snippet with checksum verification
+- `site/README.md` - Added release pipeline documentation
+- `README.md` - Expanded website section with enterprise features
+
+**What This Prevents:**
+
+- ❌ Releases without checksums
+- ❌ Corrupted archives with mismatched checksums
+- ❌ Missing platform binaries
+- ❌ Incomplete releases reaching users
+- ❌ Website regressions in health endpoint or page loads
+
+**Impact:**
+
+- **Release quality gate** - CI automatically validates every release before publication
+- **User security** - Download verification guidance in every install snippet
+- **Operational confidence** - Automated smoke tests prevent broken deployments
+- **Clear documentation** - Maintainers know how to verify releases manually
+- **No manual steps** - Validation runs automatically on every release tag
+
+**Release Focus:**
+
+This enhancement adds **enterprise-grade quality gates** to the release pipeline:
+- ✅ Automated release validation (blocks incomplete releases)
+- ✅ Checksum verification (SHA256 for all archives)
+- ✅ Download security guidance (verification commands in install snippet)
+- ✅ Website testing (unit tests + smoke tests on every PR)
+- ✅ Comprehensive documentation (pipeline validation + manual verification)
+
+**No Product Changes:** This release contains NO changes to acc product behavior, CLI semantics, JSON schemas, or exit codes. All changes are pipeline validation, website hardening, and documentation.
+
+**No CLI Test Changes:** This release contains NO changes to CLI test scripts. All testing enhancements are for website infrastructure under `site/` and release pipeline under `.github/workflows/`.
+
 ## [0.2.5] - 2025-12-20
 
 ### Fixed - Documentation Accuracy
