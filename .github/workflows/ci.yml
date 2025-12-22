@@ -90,7 +90,9 @@ jobs:
       run: go test -v ./...
 
     - name: Build acc
-      run: go build -o acc ./cmd/acc
+      run: |
+        go clean -cache -modcache
+        go build -a -o acc ./cmd/acc
 
     - name: Install test dependencies
       run: |
