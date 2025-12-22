@@ -7,17 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Nothing yet
-
-### Changed
-- Nothing yet
-
-### Fixed
-- Nothing yet
-
-## [0.2.6] - 2025-12-21
-
 ### Added - Website & Documentation
 
 #### Official Website Launch (Vercel + GitHub Releases Backend)
@@ -73,12 +62,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `site/app/globals.css` - Global styles with dark/light mode
 - `site/public/demo/` - Demo asset placeholder
 - `.github/workflows/site-deploy.yml` - Vercel deploy hook trigger
+- `.github/workflows/site-ci.yml` - Site-only CI workflow (lint, typecheck, build)
 - `site/README.md` - Website setup and deployment documentation
 - `docs/website.md` - Website architecture documentation
 
 **Release Focus:**
 
-v0.2.6 is a **website and documentation release** that:
+This release is a **website and documentation release** that:
 - ✅ Launches official acc website on Vercel
 - ✅ Provides auto-updating download and release pages
 - ✅ Documents website architecture and deployment process
@@ -86,7 +76,7 @@ v0.2.6 is a **website and documentation release** that:
 
 **No Product Changes:** This release contains NO changes to acc product behavior, CLI semantics, JSON schemas, or exit codes. All changes are website infrastructure and documentation.
 
-**No Test Changes:** This release contains NO changes to test scripts or CI workflows for the CLI tool. All test infrastructure remains unchanged from v0.2.5.
+**No Test Changes:** This release contains NO changes to test scripts or CI workflows for the CLI tool. All test infrastructure remains unchanged.
 
 ## [0.2.5] - 2025-12-20
 
@@ -1089,8 +1079,7 @@ acc follows [Semantic Versioning](https://semver.org/):
 
 ---
 
-[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.2.6...HEAD
-[0.2.6]: https://github.com/cloudcwfranck/acc/compare/v0.2.5...v0.2.6
+[Unreleased]: https://github.com/cloudcwfranck/acc/compare/v0.2.5...HEAD
 [0.2.5]: https://github.com/cloudcwfranck/acc/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/cloudcwfranck/acc/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/cloudcwfranck/acc/compare/v0.2.2...v0.2.3
