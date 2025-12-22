@@ -492,8 +492,10 @@ fi
 log_section "TEST 7: Trust Status"
 
 # Trust status for demo-app:ok
-status_ok_output=$($ACC_BIN trust status --json demo-app:ok 2>&1) || true
+set +e
+status_ok_output=$($ACC_BIN trust status --json demo-app:ok 2>&1)
 status_ok_exit=$?
+set -e
 
 log "acc trust status demo-app:ok: exit $status_ok_exit"
 if [ $status_ok_exit -eq 0 ]; then
@@ -539,8 +541,10 @@ else
 fi
 
 # Trust status for demo-app:root
-status_root_output=$($ACC_BIN trust status --json demo-app:root 2>&1) || true
+set +e
+status_root_output=$($ACC_BIN trust status --json demo-app:root 2>&1)
 status_root_exit=$?
+set -e
 
 log "acc trust status demo-app:root: exit $status_root_exit"
 if [ $status_root_exit -eq 1 ]; then
@@ -585,8 +589,10 @@ EOF
 docker build -f Dockerfile.never -t demo-app:never-verified . > /dev/null 2>&1
 
 # Trust status for never-verified image (should return exit code 2 for unknown status)
-status_never_output=$($ACC_BIN trust status --json demo-app:never-verified 2>&1) || true
+set +e
+status_never_output=$($ACC_BIN trust status --json demo-app:never-verified 2>&1)
 status_never_exit=$?
+set -e
 
 log "acc trust status demo-app:never-verified: exit $status_never_exit"
 if [ $status_never_exit -eq 2 ]; then
