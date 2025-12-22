@@ -162,6 +162,7 @@ log_section "Testing Subcommands"
 # trust subcommand
 test_help_command "trust --help" "trust command help"
 test_help_command "trust status --help" "trust status subcommand"
+test_help_command "trust verify --help" "trust verify subcommand"
 
 # policy subcommand
 test_help_command "policy --help" "policy command help"
