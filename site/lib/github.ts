@@ -18,6 +18,8 @@ export interface GitHubRelease {
   body: string;
   published_at: string;
   html_url: string;
+  prerelease: boolean;
+  draft: boolean;
   assets: GitHubAsset[];
 }
 
@@ -29,7 +31,45 @@ export interface GitHubAsset {
 }
 
 /**
- * Fetch the latest release
+ * Fetch the latest stable release (excludes prereleases and drafts)
+ */
+export async function getLatestStableRelease(): Promise<GitHubRelease | null> {
+  try {
+    const releases = await getReleases(20); // Fetch more to find stable
+    const stable = releases.find(r => !r.prerelease && !r.draft);
+    return stable || null;
+  } catch (error) {
+    console.error('Error fetching latest stable release:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetch the latest prerelease (if any)
+ */
+export async function getLatestPrerelease(): Promise<GitHubRelease | null> {
+  try {
+    const releases = await getReleases(20);
+    const prerelease = releases.find(r => r.prerelease && !r.draft);
+    return prerelease || null;
+  } catch (error) {
+    console.error('Error fetching latest prerelease:', error);
+    return null;
+  }
+}
+
+/**
+ * Determine if a prerelease is newer than stable
+ */
+export function isPrereleaseNewer(prerelease: GitHubRelease, stable: GitHubRelease): boolean {
+  const prereleaseDate = new Date(prerelease.published_at);
+  const stableDate = new Date(stable.published_at);
+  return prereleaseDate > stableDate;
+}
+
+/**
+ * Fetch the latest release (could be stable or prerelease)
+ * This is the GitHub API /releases/latest endpoint behavior
  */
 export async function getLatestRelease(): Promise<GitHubRelease | null> {
   try {

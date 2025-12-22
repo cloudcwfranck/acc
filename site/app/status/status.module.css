@@ -1,0 +1,176 @@
+.header {
+  text-align: center;
+  padding: 2rem 0 3rem;
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 0.5rem 1.5rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 1.125rem;
+  margin: 1rem 0;
+}
+
+.statusOk {
+  background: rgba(34, 197, 94, 0.1);
+  color: rgb(34, 197, 94);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.statusDegraded {
+  background: rgba(251, 191, 36, 0.1);
+  color: rgb(251, 191, 36);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.statusDown {
+  background: rgba(239, 68, 68, 0.1);
+  color: rgb(239, 68, 68);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.statusUnknown {
+  background: rgba(var(--foreground-rgb), 0.05);
+  color: rgb(var(--foreground-rgb));
+  border: 1px solid rgba(var(--foreground-rgb), 0.2);
+}
+
+.lastChecked {
+  color: rgba(var(--foreground-rgb), 0.6);
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+.section {
+  margin: 3rem 0;
+  padding: 2rem;
+  border: 1px solid rgba(var(--border-rgb), 1);
+  border-radius: 8px;
+  background: rgba(var(--foreground-rgb), 0.02);
+}
+
+.section h2 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+}
+
+.metrics {
+  display: grid;
+  gap: 1rem;
+}
+
+.metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgba(var(--border-rgb), 0.5);
+}
+
+.metric:last-child {
+  border-bottom: none;
+}
+
+.label {
+  font-weight: 500;
+  color: rgba(var(--foreground-rgb), 0.9);
+}
+
+.value {
+  font-family: var(--font-mono);
+  color: rgba(var(--foreground-rgb), 0.7);
+}
+
+.valueOk {
+  color: rgb(34, 197, 94);
+  font-weight: 600;
+}
+
+.valueWarn {
+  color: rgb(251, 191, 36);
+  font-weight: 600;
+}
+
+.valueError {
+  color: rgb(239, 68, 68);
+  font-weight: 600;
+}
+
+.troubleshooting {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.issue {
+  padding: 1rem;
+  background: rgba(var(--foreground-rgb), 0.03);
+  border-left: 3px solid rgb(251, 191, 36);
+  border-radius: 4px;
+}
+
+.issue h3 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  font-size: 1.125rem;
+  color: rgb(251, 191, 36);
+}
+
+.issue p {
+  margin: 0.5rem 0;
+  color: rgba(var(--foreground-rgb), 0.8);
+}
+
+.issue ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+  color: rgba(var(--foreground-rgb), 0.7);
+}
+
+.issue a {
+  color: rgb(var(--primary-rgb));
+  text-decoration: underline;
+}
+
+.actions {
+  text-align: center;
+  margin: 2rem 0;
+}
+
+.refreshBtn {
+  padding: 0.75rem 2rem;
+  background: rgb(var(--primary-rgb));
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refreshBtn:hover {
+  background: rgba(var(--primary-rgb), 0.8);
+}
+
+.error {
+  color: rgb(239, 68, 68);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .metric {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .header h1 {
+    font-size: 2rem;
+  }
+}

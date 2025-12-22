@@ -4,10 +4,12 @@ This directory contains the Next.js website for acc, deployed on Vercel.
 
 ## Architecture
 
-- **Frontend**: Next.js 14 (App Router, TypeScript)
-- **Backend**: GitHub Releases API + repository content
-- **Hosting**: Vercel
-- **Auto-updates**: ISR (Incremental Static Regeneration) + Deploy Hooks
+- **Frontend**: Next.js 14 (App Router, TypeScript, React Server Components)
+- **Backend**: GitHub Releases API + repository content (unauthenticated by default)
+- **Hosting**: Vercel (edge deployment)
+- **Auto-updates**: Dual mechanism - ISR (60s revalidation) + Deploy Hooks (immediate)
+- **Operational Monitoring**: `/api/health` endpoint + `/status` dashboard
+- **Release Selection**: Stable-by-default with optional pre-release toggle
 
 ## Local Development
 
@@ -139,6 +141,167 @@ Homepage will automatically display it. Currently shows a placeholder.
 1. Ensure all dependencies are in `package.json`
 2. Run `npm run build` locally to reproduce
 3. Check Vercel build logs for specific errors
+
+## Enterprise Features
+
+### Stable vs Pre-Release Selection
+
+The website implements stable-by-default download behavior:
+
+**Stable Release (Default)**:
+- Downloads page shows the latest stable release (where `prerelease: false` and `draft: false`)
+- Primary CTA buttons link to stable release assets
+- Recommended for production use
+
+**Pre-Release Toggle**:
+- Users can enable "Include pre-releases" checkbox on `/download` page
+- When enabled, shows the latest pre-release if it's newer than stable
+- Pre-releases clearly labeled with warning: "Not recommended for production use"
+- Preference persisted in `localStorage` and via URL parameter `?prerelease=1`
+
+**Implementation**:
+- `lib/github.ts` → `getLatestStableRelease()` and `getLatestPrerelease()`
+- Download page uses client-side toggle with server-side data fetching
+- Pre-release banner shows site-wide if pre-release is newer than stable
+
+### Operational Health Monitoring
+
+The website includes enterprise-grade health monitoring:
+
+**Health Check Endpoint**: `GET /api/health`
+
+Returns JSON with operational status:
+```json
+{
+  "status": "ok|degraded|down",
+  "timestamp": "2025-12-22T...",
+  "github": {
+    "reachable": true,
+    "rateLimitRemaining": 58,
+    "latestStableTag": "v0.2.5",
+    "latestPrereleaseTag": "v0.2.6",
+    "assetsOk": true,
+    "checksumsPresent": true
+  }
+}
+```
+
+**Status Meanings**:
+- `ok`: GitHub API reachable, stable release exists with valid assets
+- `degraded`: Reachable but issues (missing checksums, no stable release, etc.)
+- `down`: GitHub API unreachable or returning errors
+
+**Status Dashboard**: `/status`
+- Real-time health metrics
+- Rate limit information
+- Asset validation status
+- Troubleshooting guidance
+- Auto-refreshes every 60 seconds
+
+**Caching**:
+- Health checks cached for 60 seconds server-side
+- Prevents hammering GitHub API
+- Configurable cache TTL in `app/api/health/route.ts`
+
+**Status Indicator**:
+- Footer shows "● Status" link with pulsing green dot
+- Links to `/status` page for detailed metrics
+
+### Auto-Update Strategy
+
+**Dual Mechanism (Belt + Suspenders)**:
+
+1. **ISR (Baseline)**:
+   - Server-side data fetching with `revalidate: 60` (60 seconds)
+   - Automatic background revalidation
+   - No deploy hook required
+   - Guarantees updates within 60 seconds
+
+2. **Deploy Hook (Immediate)**:
+   - GitHub Actions workflow triggers on `release: published`
+   - POST request to Vercel deploy hook
+   - Full site rebuild in 30-60 seconds
+   - Requires `VERCEL_DEPLOY_HOOK_URL` secret
+
+**Why Both?**:
+- ISR provides reliable fallback if deploy hook fails
+- Deploy hook provides near-instant updates
+- Redundancy ensures site stays current
+
+### Pre-Release Banner
+
+Global banner displayed when:
+- A pre-release exists
+- Pre-release is newer than stable release
+
+**Features**:
+- Clear warning: "Pre-release available: vX.Y.Z (not recommended for production)"
+- CTA to view pre-release on download page
+- Dismissible (persisted per version in `localStorage`)
+- Responsive design
+- Dark/light mode compatible
+
+### Testing
+
+Run tests locally:
+```bash
+npm test              # Run all tests
+npm run test:watch   # Watch mode
+```
+
+**Test Coverage**:
+- Release parsing logic (stable vs pre-release)
+- Asset information parsing (OS/arch detection)
+- Display name mapping
+- Pre-release selection logic
+
+**Test Files**:
+- `__tests__/github.test.ts` - Core GitHub API helper tests
+
+## Operations
+
+### Monitoring Production Health
+
+1. **Check status page**: https://your-site.vercel.app/status
+2. **API health check**: `curl https://your-site.vercel.app/api/health`
+3. **Vercel deployment logs**: Check for errors
+4. **GitHub Actions**: Verify deploy hook workflow runs
+
+### Common Operational Tasks
+
+**Verify Pre-Release Toggle**:
+1. Publish a pre-release on GitHub (check "This is a pre-release")
+2. Wait 60 seconds (ISR) or trigger deploy hook
+3. Visit `/download` - should show stable by default
+4. Enable "Include pre-releases" - should switch to pre-release
+5. Verify warning displays: "Not recommended for production use"
+
+**Test Health Check**:
+```bash
+# Check health status
+curl https://your-site.vercel.app/api/health | jq
+
+# Should return "ok" if GitHub is reachable and releases exist
+# Returns "degraded" if issues detected
+# Returns "down" if GitHub API unreachable
+```
+
+**Simulate GitHub Outage**:
+- Health endpoint will return `"status": "down"`
+- Status page shows troubleshooting guidance
+- Download page gracefully degrades (shows error message)
+
+### Environment Variables
+
+| Variable | Required | Purpose | Default |
+|----------|----------|---------|---------|
+| `GITHUB_TOKEN` | No | Increase rate limit to 5000/hour | Unauthenticated (60/hour) |
+| `VERCEL_DEPLOY_HOOK_URL` | No | Enable immediate deploy on release | ISR fallback only |
+
+**Setting in Vercel**:
+- Project Settings → Environment Variables
+- Add variables for Production, Preview, Development as needed
+- Redeploy after adding variables
 
 ## Contributing
 
