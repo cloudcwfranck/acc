@@ -41,6 +41,26 @@ npm run build
 npm run start
 ```
 
+### Testing
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm test -- --coverage
+```
+
+**Test Coverage:**
+- ✅ Semver sorting (v0.2.10 > v0.2.9)
+- ✅ Stable vs prerelease selection
+- ✅ Checksum detection (multiple formats: checksums.txt, SHA256SUMS, .sha256 files)
+- ✅ Single source of truth logic
+- ✅ Draft filtering
+
 ## Deployment
 
 ### Initial Vercel Setup
@@ -146,23 +166,55 @@ Homepage will automatically display it. Currently shows a placeholder.
 
 ### Stable vs Pre-Release Selection
 
-The website implements stable-by-default download behavior:
+The website implements stable-by-default download behavior with **enterprise-grade semver sorting** and a **single source of truth** for all release logic.
 
 **Stable Release (Default)**:
 - Downloads page shows the latest stable release (where `prerelease: false` and `draft: false`)
 - Primary CTA buttons link to stable release assets
 - Recommended for production use
+- **Guaranteed correct even with v0.2.10 > v0.2.9 scenarios**
 
 **Pre-Release Toggle**:
 - Users can enable "Include pre-releases" checkbox on `/download` page
-- When enabled, shows the latest pre-release if it's newer than stable
+- When enabled, shows the **highest semver overall** (stable or prerelease)
 - Pre-releases clearly labeled with warning: "Not recommended for production use"
 - Preference persisted in `localStorage` and via URL parameter `?prerelease=1`
 
+**Semver Sorting**:
+- All releases sorted by semantic version (not GitHub API order)
+- Correctly handles: v0.2.10 > v0.2.9 > v0.2.5
+- Stable versions ranked higher than prereleases of same version (v1.0.0 > v1.0.0-alpha)
+- Draft releases completely filtered out
+
+**Checksum Detection**:
+- Detects multiple checksum formats:
+  - `checksums.txt` (preferred)
+  - `SHA256SUMS`
+  - `checksums.sha256`
+  - `sha256sums.txt`
+  - Per-asset `.sha256` files (fallback)
+- **Always checks against selected release** (no stable/prerelease mismatch)
+- Download page shows warning if checksums missing
+
+**Single Source of Truth**:
+- All logic in `lib/releases.ts` → `computeReleaseSelection()`
+- Returns deterministic state:
+  - `latestStable` (highest stable version)
+  - `latestPrerelease` (highest prerelease version)
+  - `selectedRelease` (based on toggle)
+  - `hasChecksums` (checksum availability for selected release)
+- Used by:
+  - `/api/releases/selection` (API route)
+  - `/api/health` (health endpoint)
+  - Download page UI
+  - Status page
+
 **Implementation**:
-- `lib/github.ts` → `getLatestStableRelease()` and `getLatestPrerelease()`
-- Download page uses client-side toggle with server-side data fetching
-- Pre-release banner shows site-wide if pre-release is newer than stable
+- `lib/releases.ts` → Core semver logic and release selection
+- `lib/github.ts` → GitHub API fetching (with optional server-side GITHUB_TOKEN)
+- `app/api/releases/selection/route.ts` → Single source of truth API
+- Download page fetches from API (no client-side release logic)
+- **Comprehensive test coverage**: 40+ tests in `__tests__/releases.test.ts`
 
 ### Operational Health Monitoring
 

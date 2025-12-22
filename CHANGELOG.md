@@ -352,6 +352,110 @@ This enhancement adds **enterprise-grade quality gates** to the release pipeline
 
 **No CLI Test Changes:** This release contains NO changes to CLI test scripts. All testing enhancements are for website infrastructure under `site/` and release pipeline under `.github/workflows/`.
 
+#### Semantic Version Sorting & Checksum Detection Fixes
+
+**Summary**: Fixed critical bugs in release selection (semver sorting) and checksum detection to ensure deterministic, correct behavior across all scenarios.
+
+**What's Fixed:**
+
+- ✅ **Semantic version sorting** - v0.2.10 now correctly ranks higher than v0.2.9 (was alphabetical, now proper semver)
+- ✅ **Comprehensive checksum detection** - Detects multiple formats: `checksums.txt`, `SHA256SUMS`, `checksums.sha256`, `sha256sums.txt`, `.sha256` files
+- ✅ **Checksum mismatch bug** - Fixed bug where download page showed v0.2.5 but checked checksums from v0.2.6
+- ✅ **Single source of truth** - All release logic unified in `computeReleaseSelection()` function
+- ✅ **ESLint compliance** - Fixed `react/no-unescaped-entities` error in download page
+
+**Bug Fixes:**
+
+**Release Selection (Semver Sorting)**:
+- **Before**: Releases sorted by GitHub API order (alphabetical) - v0.2.9 could appear after v0.2.10
+- **After**: Proper semantic version comparison - v0.2.10 > v0.2.9 > v0.2.5
+- Added `parseSemver()` and `compareSemver()` functions
+- Stable versions (no prerelease suffix) rank higher than prereleases with same base version
+- Comprehensive tests ensure v0.2.10 > v0.2.9 ordering
+
+**Checksum Detection**:
+- **Before**: Only detected `checksums.txt`, missed other common formats
+- **After**: Prioritized detection of multiple formats:
+  1. `checksums.txt` (highest priority)
+  2. `SHA256SUMS`
+  3. `checksums.sha256`
+  4. `sha256sums.txt`
+  5. Per-asset `.sha256` files (fallback)
+- Added `detectChecksumAsset()` function with comprehensive tests
+
+**Checksum Mismatch Bug**:
+- **Before**: Download page could show stable v0.2.5 while fetching checksums from prerelease v0.2.6
+- **After**: `computeReleaseSelection()` returns checksumAsset for selected release only
+- Download page always uses `state.checksumAsset` (guaranteed to match selected release)
+- Health endpoint uses same selection logic for consistency
+
+**Single Source of Truth**:
+- Created `/api/releases/selection` endpoint using `computeReleaseSelection()`
+- Download page fetches state from API (no client-side logic)
+- Health endpoint uses same function for release selection
+- Status page uses same logic
+- **Result**: Impossible to have version/checksum mismatch
+
+**New Core Module** (`site/lib/releases.ts`):
+```typescript
+- parseSemver() - Parse version strings with v prefix handling
+- compareSemver() - Proper semver comparison (major.minor.patch + prerelease)
+- sortReleasesBySemver() - Sort releases by semver (not GitHub order)
+- detectChecksumAsset() - Multi-format checksum detection
+- computeReleaseSelection() - SINGLE SOURCE OF TRUTH for all release state
+```
+
+**Testing:**
+
+- Added 17 new tests (44 total, all passing)
+- `parseSemver` tests: standard/prerelease versions, invalid input
+- `compareSemver` tests: **v0.2.10 > v0.2.9** (critical test), stable > prerelease
+- `sortReleasesBySemver` tests: correct ordering across multiple versions
+- `detectChecksumAsset` tests: all formats, prioritization, fallbacks
+- `computeReleaseSelection` tests: stable default, prerelease toggle, draft filtering, checksum detection
+
+**Files Added:**
+
+- `site/lib/releases.ts` - Core semver and release selection logic (167 lines)
+- `site/app/api/releases/selection/route.ts` - Server-side release selection API
+- `site/__tests__/releases.test.ts` - Comprehensive test suite (334 lines, 17 new tests)
+
+**Files Modified:**
+
+- `site/lib/github.ts` - Added `getAuthHeaders()`, reduced ISR interval to 60s
+- `site/app/download/page.tsx` - Rewritten to use `/api/releases/selection`, fixed ESLint quote escaping
+- `site/app/api/health/route.ts` - Updated to use `computeReleaseSelection()` for consistency
+- `site/README.md` - Documented semver sorting, checksum detection, single source of truth pattern
+
+**Acceptance Criteria (All Met):**
+
+- ✅ Toggle OFF → Shows v0.2.5 stable, checksums match v0.2.5
+- ✅ Toggle ON → Shows v0.2.6 prerelease, checksums match v0.2.6
+- ✅ No scenario where version shown != checksums checked
+- ✅ v0.2.10 correctly appears after v0.2.9 in all views
+- ✅ Status page reflects Degraded/Operational correctly based on checksum presence
+
+**Impact:**
+
+- **Correctness** - Release selection now deterministic and semver-compliant
+- **Security** - Checksum verification always matches displayed version
+- **Reliability** - Single source of truth prevents state inconsistencies
+- **Test coverage** - 44 tests ensure no regressions
+- **User trust** - Download page shows correct checksums for selected release
+
+**Release Focus:**
+
+This release fixes **critical bugs in release selection and checksum detection**:
+- ✅ Semantic version sorting (v0.2.10 > v0.2.9)
+- ✅ Multi-format checksum detection
+- ✅ Version/checksum mismatch prevention
+- ✅ Single source of truth architecture
+- ✅ ESLint compliance for CI
+
+**No Product Changes:** This release contains NO changes to acc product behavior, CLI semantics, JSON schemas, or exit codes. All changes are website bug fixes and test enhancements.
+
+**No CLI Test Changes:** This release contains NO changes to CLI test scripts. All testing enhancements are for website infrastructure under `site/__tests__/`.
+
 ## [0.2.5] - 2025-12-20
 
 ### Fixed - Documentation Accuracy

@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-
-const GITHUB_API_BASE = 'https://api.github.com';
-const REPO_OWNER = 'cloudcwfranck';
-const REPO_NAME = 'acc';
+import { getReleases } from '@/lib/github';
+import { computeReleaseSelection } from '@/lib/releases';
 
 // Cache health check results for 60 seconds
 let healthCache: {
@@ -21,32 +19,18 @@ export async function GET() {
   }
 
   const timestamp = new Date().toISOString();
-  const headers: Record<string, string> = {
-    'Accept': 'application/vnd.github.v3+json',
-  };
-
-  // Use GITHUB_TOKEN if available (server-side only)
-  if (process.env.GITHUB_TOKEN) {
-    headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
-  }
 
   try {
-    // Fetch all releases to check stable vs prerelease
-    const releasesResponse = await fetch(
-      `${GITHUB_API_BASE}/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=10`,
-      {
-        headers,
-        next: { revalidate: 0 }, // Don't cache the fetch itself
-      }
-    );
+    // Fetch releases (uses server-side GITHUB_TOKEN if available)
+    const releases = await getReleases(30);
 
-    if (!releasesResponse.ok) {
+    if (releases.length === 0) {
       const result = {
         status: 'down',
         timestamp,
         github: {
           reachable: false,
-          error: `HTTP ${releasesResponse.status}`,
+          error: 'No releases found',
           rateLimitRemaining: null,
           latestStableTag: null,
           latestPrereleaseTag: null,
@@ -58,39 +42,25 @@ export async function GET() {
       return NextResponse.json(result);
     }
 
-    const releases = await releasesResponse.json();
-    const rateLimitRemaining = releasesResponse.headers.get('x-ratelimit-remaining');
+    // Compute release selection state (single source of truth)
+    const state = computeReleaseSelection(releases, false); // Check stable by default
 
-    // Find latest stable and latest prerelease
-    const stableReleases = releases.filter((r: any) => !r.prerelease && !r.draft);
-    const prereleaseReleases = releases.filter((r: any) => r.prerelease && !r.draft);
-
-    const latestStable = stableReleases[0];
-    const latestPrerelease = prereleaseReleases[0];
-
-    // Check assets and checksums for latest stable
+    // Check assets for latest stable
     let assetsOk = false;
-    let checksumsPresent = false;
-
-    if (latestStable) {
-      const assets = latestStable.assets || [];
-      // Expect at least one binary asset
-      const hasBinaries = assets.some((a: any) =>
+    if (state.latestStable) {
+      const hasBinaries = state.latestStable.assets.some(a =>
         a.name.match(/acc_.*\.(tar\.gz|zip)/)
       );
-      const hasChecksums = assets.some((a: any) => a.name === 'checksums.txt');
-
       assetsOk = hasBinaries;
-      checksumsPresent = hasChecksums;
     }
 
     // Determine overall status
-    let status = 'ok';
-    if (!latestStable) {
+    let status: 'ok' | 'degraded' | 'down' = 'ok';
+    if (!state.latestStable) {
       status = 'degraded'; // No stable releases
     } else if (!assetsOk) {
       status = 'degraded'; // Missing expected assets
-    } else if (!checksumsPresent) {
+    } else if (!state.hasChecksums) {
       status = 'degraded'; // Missing checksums
     }
 
@@ -99,11 +69,12 @@ export async function GET() {
       timestamp,
       github: {
         reachable: true,
-        rateLimitRemaining: rateLimitRemaining ? parseInt(rateLimitRemaining) : null,
-        latestStableTag: latestStable?.tag_name || null,
-        latestPrereleaseTag: latestPrerelease?.tag_name || null,
+        rateLimitRemaining: null, // Can't get from getReleases, but API is working
+        latestStableTag: state.latestStable?.tag_name || null,
+        latestPrereleaseTag: state.latestPrerelease?.tag_name || null,
         assetsOk,
-        checksumsPresent,
+        checksumsPresent: state.hasChecksums,
+        checksumAsset: state.checksumAsset?.name || null,
       },
     };
 
