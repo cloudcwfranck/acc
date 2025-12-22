@@ -303,6 +303,112 @@ curl https://your-site.vercel.app/api/health | jq
 - Add variables for Production, Preview, Development as needed
 - Redeploy after adding variables
 
+## Release Pipeline & Validation
+
+### Release Artifact Requirements
+
+Every acc release MUST include:
+- ✅ Cross-platform binaries (Linux, macOS, Windows × AMD64, ARM64)
+- ✅ **checksums.txt** with SHA256 for all archives
+- ✅ Release notes from CHANGELOG.md
+- ✅ Proper prerelease marking (v0.x or versions with `-` suffix)
+
+### Automated Validation
+
+The release workflow includes automated validation to ensure release quality:
+
+**Build Job** (`.github/workflows/release.yml`):
+1. Builds cross-platform binaries
+2. Packages as `.tar.gz` (Linux/macOS) and `.zip` (Windows)
+3. Generates `checksums.txt` with SHA256 for all archives
+4. Uploads artifacts to GitHub Release
+
+**Validation Job** (runs after build):
+1. ✅ Verifies `checksums.txt` exists
+2. ✅ Ensures all 5 platform archives have checksums
+3. ✅ Validates checksums match actual files (`sha256sum -c`)
+4. ✅ Confirms minimum 5 archives present
+5. ❌ Fails release if any check fails
+
+**What Happens on Failure:**
+- Release job fails with clear error message
+- GitHub Release is not published
+- Maintainer receives actionable guidance on what to fix
+
+### Website Integration with Releases
+
+**Automatic Updates:**
+1. **On Release Published**: GitHub Actions triggers Vercel deploy hook
+2. **ISR Fallback**: 60-second revalidation ensures updates even if hook fails
+3. **Download Page**: Automatically shows new release within 1 minute
+
+**Download Verification:**
+- Download page includes checksum verification in install snippet
+- If checksums missing: Shows warning "⚠️ Checksums not available for this release"
+- If checksums present: Displays full SHA256 checksums with verification commands
+
+**Health Monitoring:**
+- `/api/health` endpoint validates latest release has required assets
+- Status degrades to "degraded" if checksums missing
+- `/status` page shows asset validation status
+
+### Verifying a Release Manually
+
+**Check Release Completeness:**
+```bash
+# List assets for a release
+gh release view v0.2.6 --json assets --jq '.assets[].name'
+
+# Expected output:
+# acc_0.2.6_darwin_amd64.tar.gz
+# acc_0.2.6_darwin_arm64.tar.gz
+# acc_0.2.6_linux_amd64.tar.gz
+# acc_0.2.6_linux_arm64.tar.gz
+# acc_0.2.6_windows_amd64.zip
+# checksums.txt
+```
+
+**Verify Checksums:**
+```bash
+# Download and verify
+curl -LO https://github.com/cloudcwfranck/acc/releases/download/v0.2.6/checksums.txt
+curl -LO https://github.com/cloudcwfranck/acc/releases/download/v0.2.6/acc_0.2.6_linux_amd64.tar.gz
+
+# Verify checksum matches
+sha256sum -c checksums.txt --ignore-missing
+# Expected: acc_0.2.6_linux_amd64.tar.gz: OK
+```
+
+**Check Website Auto-Update:**
+```bash
+# 1. Note current version shown on /download
+# 2. Publish new release on GitHub
+# 3. Wait 60 seconds (ISR interval)
+# 4. Reload /download - should show new version
+# 5. Check /status - should show new stable tag
+```
+
+### CI/CD Workflows
+
+**Site CI** (`.github/workflows/site-ci.yml`):
+- Runs on PRs that modify `site/**`
+- Linting, type checking, build validation
+- **Unit tests**: Validates stable/prerelease selection logic (27 tests)
+- **Smoke tests**: Health endpoint, download page, status page
+
+**Site Deploy** (`.github/workflows/site-deploy.yml`):
+- Triggers on `release:published`
+- POSTs to Vercel deploy hook (if configured)
+- Gracefully skips if `VERCEL_DEPLOY_HOOK_URL` not set
+- ISR provides fallback auto-update mechanism
+
+**Release** (`.github/workflows/release.yml`):
+- Triggers on `v*` tags
+- Builds cross-platform binaries
+- Generates and validates checksums
+- Publishes GitHub Release with artifacts
+- **Critical**: Blocks release if validation fails
+
 ## Contributing
 
 The website is isolated under `site/` and does not affect the CLI tool.

@@ -235,6 +235,10 @@ OS="linux"    # or darwin
 ARCH="amd64"  # or arm64
 
 curl -LO "https://github.com/cloudcwfranck/acc/releases/download/${selectedRelease.tag_name}/acc_\${VERSION}_\${OS}_\${ARCH}.tar.gz"
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/${selectedRelease.tag_name}/checksums.txt"
+
+# Verify checksum
+${checksums ? 'sha256sum -c checksums.txt --ignore-missing  # Linux\n# shasum -a 256 -c checksums.txt --ignore-missing  # macOS' : '# ⚠️  Checksums not available for this release'}
 
 # Extract and install
 tar -xzf "acc_\${VERSION}_\${OS}_\${ARCH}.tar.gz"

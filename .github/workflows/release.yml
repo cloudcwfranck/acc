@@ -12,6 +12,8 @@ jobs:
   build:
     name: Build Release Artifacts
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
     - name: Checkout code
@@ -157,3 +159,127 @@ jobs:
         name: release-artifacts-${{ steps.version.outputs.version }}
         path: dist/
         retention-days: 30
+
+  validate:
+    name: Validate Release Artifacts
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: release-artifacts-${{ needs.build.outputs.version || github.ref_name }}
+        path: dist/
+
+    - name: Validate checksums exist
+      run: |
+        cd dist
+
+        echo "📋 Validating release artifacts..."
+        echo ""
+
+        # Check checksums.txt exists
+        if [ ! -f checksums.txt ]; then
+          echo "❌ VALIDATION FAILED: checksums.txt not found"
+          echo ""
+          echo "Release artifacts MUST include checksums.txt"
+          echo "Ensure the 'Generate checksums' step in the build job completed successfully"
+          exit 1
+        fi
+
+        echo "✅ checksums.txt exists"
+        echo ""
+
+        # Count checksums
+        CHECKSUM_COUNT=$(wc -l < checksums.txt)
+        echo "📊 Found $CHECKSUM_COUNT checksums"
+        echo ""
+
+        # Validate all expected binaries have checksums
+        EXPECTED_FILES=(
+          "acc_*_linux_amd64.tar.gz"
+          "acc_*_linux_arm64.tar.gz"
+          "acc_*_darwin_amd64.tar.gz"
+          "acc_*_darwin_arm64.tar.gz"
+          "acc_*_windows_amd64.zip"
+        )
+
+        MISSING_CHECKSUMS=0
+        for pattern in "${EXPECTED_FILES[@]}"; do
+          FILE=$(ls $pattern 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            echo "⚠️  Warning: No file matching $pattern found"
+            continue
+          fi
+
+          if ! grep -q "$FILE" checksums.txt; then
+            echo "❌ Missing checksum for: $FILE"
+            MISSING_CHECKSUMS=$((MISSING_CHECKSUMS + 1))
+          else
+            echo "✅ Checksum present: $FILE"
+          fi
+        done
+
+        if [ $MISSING_CHECKSUMS -gt 0 ]; then
+          echo ""
+          echo "❌ VALIDATION FAILED: $MISSING_CHECKSUMS file(s) missing checksums"
+          echo ""
+          echo "All release artifacts MUST have checksums in checksums.txt"
+          exit 1
+        fi
+
+        echo ""
+        echo "✅ All release artifacts have checksums"
+
+    - name: Verify checksums are valid
+      run: |
+        cd dist
+
+        echo "🔐 Verifying checksum integrity..."
+        echo ""
+
+        # Verify checksums match actual files
+        if sha256sum -c checksums.txt 2>&1 | grep -q "FAILED"; then
+          echo "❌ VALIDATION FAILED: Checksum verification failed"
+          echo ""
+          echo "One or more checksums do not match the actual files"
+          sha256sum -c checksums.txt
+          exit 1
+        fi
+
+        echo "✅ All checksums verified successfully"
+        echo ""
+        cat checksums.txt
+
+    - name: Validate release completeness
+      run: |
+        cd dist
+
+        echo "📦 Validating release completeness..."
+        echo ""
+
+        # Check minimum expected files
+        ARCHIVE_COUNT=$(ls *.tar.gz *.zip 2>/dev/null | wc -l)
+
+        if [ $ARCHIVE_COUNT -lt 5 ]; then
+          echo "❌ VALIDATION FAILED: Expected at least 5 archives, found $ARCHIVE_COUNT"
+          echo ""
+          echo "Expected archives:"
+          echo "  - Linux AMD64 (tar.gz)"
+          echo "  - Linux ARM64 (tar.gz)"
+          echo "  - macOS AMD64 (tar.gz)"
+          echo "  - macOS ARM64 (tar.gz)"
+          echo "  - Windows AMD64 (zip)"
+          echo ""
+          echo "Found:"
+          ls -lh *.tar.gz *.zip 2>/dev/null || echo "No archives found"
+          exit 1
+        fi
+
+        echo "✅ Found $ARCHIVE_COUNT release archives"
+        echo ""
+        echo "📁 Release artifacts:"
+        ls -lh *.tar.gz *.zip checksums.txt
+        echo ""
+        echo "🎉 Release validation passed!"
