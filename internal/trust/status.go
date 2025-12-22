@@ -158,6 +158,12 @@ func loadVerifyState(imageRef string) (*VerifyState, error) {
 		return nil, err
 	}
 
+	// CRITICAL: Verify the state is for the requested image
+	// Without this check, different images can share state (cross-image leakage)
+	if state.ImageRef != imageRef {
+		return nil, fmt.Errorf("state mismatch: found state for %s, requested %s", state.ImageRef, imageRef)
+	}
+
 	return &state, nil
 }
 
