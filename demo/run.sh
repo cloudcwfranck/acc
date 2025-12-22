@@ -237,8 +237,8 @@ else
     log_error "trust status demo-app:never-verified: exit $status_never_exit (expected 2)"
 fi
 
-# Check for sbomPresent field
-if echo "$status_never_output" | jq -e '.sbomPresent' > /dev/null 2>&1; then
+# Check for sbomPresent field (exists as boolean, even if false)
+if echo "$status_never_output" | jq -e 'has("sbomPresent")' > /dev/null 2>&1; then
     log "trust status demo-app:never-verified: includes sbomPresent field"
 else
     log_error "trust status demo-app:never-verified: missing sbomPresent field"
