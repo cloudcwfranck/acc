@@ -497,9 +497,9 @@ status_ok_exit=$?
 
 log "acc trust status demo-app:ok: exit $status_ok_exit"
 if [ $status_ok_exit -eq 0 ]; then
-    log_success "trust status demo-app:ok: exit 0 (status can be computed)"
+    log_success "trust status demo-app:ok: exit 0 (pass status)"
 else
-    log_error "trust status demo-app:ok: exit $status_ok_exit (expected 0)"
+    log_error "trust status demo-app:ok: exit $status_ok_exit (expected 0 for pass)"
 fi
 
 if echo "$status_ok_output" | jq empty 2>/dev/null; then
@@ -543,10 +543,10 @@ status_root_output=$($ACC_BIN trust status --json demo-app:root 2>&1) || true
 status_root_exit=$?
 
 log "acc trust status demo-app:root: exit $status_root_exit"
-if [ $status_root_exit -eq 0 ]; then
-    log_success "trust status demo-app:root: exit 0 (status can be computed)"
+if [ $status_root_exit -eq 1 ]; then
+    log_success "trust status demo-app:root: exit 1 (fail status)"
 else
-    log_error "trust status demo-app:root: exit $status_root_exit (expected 0)"
+    log_error "trust status demo-app:root: exit $status_root_exit (expected 1 for fail)"
 fi
 
 if echo "$status_root_output" | jq empty 2>/dev/null; then
@@ -590,17 +590,9 @@ status_never_exit=$?
 
 log "acc trust status demo-app:never-verified: exit $status_never_exit"
 if [ $status_never_exit -eq 2 ]; then
-    log_success "trust status for never-verified image: exit 2 (unknown status - v0.2.7 contract)"
-elif [ $status_never_exit -eq 0 ]; then
-    # Check what status is returned
-    actual_status=$(echo "$status_never_output" | jq -r '.status' 2>/dev/null || echo "unknown")
-    if [ "$actual_status" == "unknown" ]; then
-        log_success "trust status for never-verified image: exit 0 with status:unknown (acceptable)"
-    else
-        log_error "trust status for never-verified image: exit 0 with status:$actual_status (expected unknown)"
-    fi
+    log_success "trust status for never-verified image: exit 2 (unknown status)"
 else
-    log_error "trust status for never-verified image: exit $status_never_exit (expected 2 or 0)"
+    log_error "trust status for never-verified image: exit $status_never_exit (expected 2 for unknown)"
 fi
 
 # v0.2.7: Verify unknown status has proper JSON schema

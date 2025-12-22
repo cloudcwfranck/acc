@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ✅ **Deterministic JSON schema** - Trust status returns stable, predictable JSON with all required fields always present
 - ✅ **Per-image attestation isolation** - Attestations scoped to specific image digests prevent cross-image leakage
-- ✅ **Exit code clarification** - Trust status exit codes now clearly indicate when status can vs. cannot be computed
+- ✅ **Exit code documentation** - Clarified that trust status exit codes remain unchanged (0=pass, 1=fail/warn, 2=unknown)
 - ✅ **Enhanced test coverage** - Added 13 new tests (9 unit, 4 golden) for trust and attest features
 - ✅ **E2E test improvements** - Strengthened smoke tests validate trust/attest integration and per-image isolation
 - ✅ **Documentation updates** - Testing contract, README, and examples now reflect v0.2.7 behavior
@@ -38,9 +38,10 @@ acc trust status --json demo-app:latest
   "timestamp": "2025-01-22T10:00:00Z"
 }
 
-# Exit codes (v0.2.7):
-# 0 = status can be computed (pass, fail, or unknown)
-# 2 = status cannot be computed (missing state)
+# Exit codes (PRESERVED - unchanged):
+# 0 = pass
+# 1 = fail or warn
+# 2 = unknown (cannot compute)
 ```
 
 **Attestation Improvements:**
@@ -77,14 +78,14 @@ Golden tests (4):
 E2E enhancements:
 - Trust status JSON schema validation (8 required fields)
 - Per-image attestation isolation checks
-- Exit code verification (0 for pass/fail, 2 for unknown)
+- Exit code verification (0=pass, 1=fail/warn, 2=unknown)
 - Attestation presence validation after `acc attest`
 
 **Backward Compatibility:**
 
 - ✅ **100% backward compatible** - All v0.2.x behavior preserved
 - ✅ **No breaking changes** - New fields added, existing fields unchanged
-- ✅ **Exit code flexibility** - Exit 0 with `status: "unknown"` remains acceptable
+- ✅ **Exit codes unchanged** - Trust status exit codes remain 0=pass, 1=fail/warn, 2=unknown
 - ✅ **JSON schema** - v0.2 schema version unchanged
 
 **Files Modified:**

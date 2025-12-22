@@ -281,10 +281,10 @@ acc trust status --json <image>
 - MUST reflect per-image state (no leakage between different image digests)
 - MUST handle "never verified" case gracefully
 
-**Exit Codes** (v0.2.7):
-- 0: Trust status can be computed (even if status is fail)
-- 2: Trust status cannot be computed (missing state, corrupted data, missing image)
-- Implementation note: Exit 0 with `status: "unknown"` is also acceptable for backward compatibility
+**Exit Codes** (PRESERVED - unchanged in v0.2.7):
+- 0: Trust status is pass
+- 1: Trust status is fail or warn
+- 2: Trust status is unknown (cannot compute - missing state, corrupted data, missing image)
 
 **JSON Schema** (v0.2.7):
 ```json
@@ -387,7 +387,7 @@ acc run <image> [-- command args...]
 | `acc verify` | Verification passed (`status:"pass"`) | Verification failed (`status:"fail"`) | Cannot complete (SBOM missing, image not found) | **Exit code MUST match `.status` field** |
 | `acc attest` | Attestation created | Mismatch or verification state missing | N/A | MUST fail when image != last verified |
 | `acc inspect` | Inspection succeeded | N/A | N/A | Always exit 0, check `.status` field |
-| `acc trust status` | Status available | N/A | No verification state found | Some versions may return 0 with `status:"unknown"` |
+| `acc trust status` | Status is pass | Status is fail or warn | Status is unknown (cannot compute) | Exit codes unchanged in v0.2.7 |
 | `acc run` | Container ran successfully | Verification failed | Runtime error | Verification gate enforced |
 | `acc push` | Push succeeded | Push failed or verification gate blocked | N/A | Verification gate enforced |
 | `acc policy explain` | Explanation available | Varies by implementation | Varies by implementation | |
@@ -736,9 +736,10 @@ Update this contract when:
   - `sbomPresent` MUST always be set as boolean (never null)
   - `violations`, `warnings`, `attestations` MUST be arrays (never null)
   - `timestamp` MUST be string (empty "" for unknown status)
-- **Contract**: Trust Status exit codes clarified
-  - Exit 0: status can be computed (pass, fail, or unknown)
-  - Exit 2: status cannot be computed (missing state, corrupted data)
+- **Contract**: Trust Status exit codes documented (PRESERVED - unchanged)
+  - Exit 0: status is pass
+  - Exit 1: status is fail or warn
+  - Exit 2: status is unknown (cannot compute)
 - **Contract**: Trust Status per-image attestation isolation
   - Attestations scoped to specific image digests
   - No cross-image attestation leakage

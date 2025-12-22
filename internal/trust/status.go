@@ -325,7 +325,7 @@ func (sr *StatusResult) FormatJSON() string {
 }
 
 // ExitCode returns appropriate exit code
-// 0 = verified, 1 = not verified, 2 = no state
+// PRESERVED BEHAVIOR: 0=pass, 1=fail/warn, 2=unknown
 func (sr *StatusResult) ExitCode() int {
 	if sr.Status == "unknown" {
 		return 2
@@ -333,6 +333,7 @@ func (sr *StatusResult) ExitCode() int {
 	if sr.Status == "pass" {
 		return 0
 	}
+	// fail or warn
 	return 1
 }
 

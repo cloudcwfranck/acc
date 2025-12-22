@@ -568,9 +568,10 @@ Warnings (2 ignored):
   [informational] old-base-image: Base image is 30 days old
 ```
 
-**Exit codes (v0.2.7):**
-- `0` - Trust status can be computed (pass, fail, or unknown)
-- `2` - Trust status cannot be computed (missing state, corrupted data)
+**Exit codes (PRESERVED - unchanged):**
+- `0` - Trust status is pass
+- `1` - Trust status is fail or warn
+- `2` - Trust status is unknown (cannot compute)
 
 **JSON output (v0.2.7):**
 ```bash

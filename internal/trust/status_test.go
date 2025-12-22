@@ -203,6 +203,7 @@ func TestStatusWithViolations(t *testing.T) {
 		t.Errorf("Status = %s, want fail", result.Status)
 	}
 
+	// fail status returns exit code 1
 	if result.ExitCode() != 1 {
 		t.Errorf("ExitCode() = %d, want 1", result.ExitCode())
 	}
