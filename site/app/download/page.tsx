@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import styles from './download.module.css';
@@ -10,6 +10,7 @@ interface Release {
   name: string;
   published_at: string;
   prerelease: boolean;
+  draft: boolean;
   html_url: string;
   assets: Asset[];
 }
@@ -20,7 +21,7 @@ interface Asset {
   size: number;
 }
 
-export default function DownloadPage() {
+function DownloadContent() {
   const searchParams = useSearchParams();
   const [stableRelease, setStableRelease] = useState<Release | null>(null);
   const [prereleaseRelease, setPrereleaseRelease] = useState<Release | null>(null);
@@ -65,7 +66,7 @@ export default function DownloadPage() {
 
       // Fetch checksums for selected release
       if (selected) {
-        const checksumsAsset = selected.assets.find(a => a.name === 'checksums.txt');
+        const checksumsAsset = selected.assets.find((a: Asset) => a.name === 'checksums.txt');
         if (checksumsAsset) {
           const checksumsResponse = await fetch(checksumsAsset.browser_download_url);
           const checksumsText = await checksumsResponse.text();
@@ -287,5 +288,13 @@ shasum -a 256 -c checksums.txt --ignore-missing`}
         </a>
       </section>
     </div>
+  );
+}
+
+export default function DownloadPage() {
+  return (
+    <Suspense fallback={<div className="container"><p>Loading...</p></div>}>
+      <DownloadContent />
+    </Suspense>
   );
 }
