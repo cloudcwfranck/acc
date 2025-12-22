@@ -169,7 +169,7 @@ describe('detectChecksumAsset', () => {
     expect(result).toBeNull();
   });
 
-  it('prioritizes checksums.txt over other formats', () => {
+  it('prioritizes checksums.txt over other legacy formats', () => {
     const release = createReleaseWithAssets([
       'SHA256SUMS',
       'checksums.txt',
@@ -178,6 +178,60 @@ describe('detectChecksumAsset', () => {
     const result = detectChecksumAsset(release);
 
     expect(result?.name).toBe('checksums.txt');
+    expect(result?.source).toBe('legacy');
+  });
+
+  // First-class API tests
+  it('detects checksums.json as first-class API', () => {
+    const release = createReleaseWithAssets(['binary.tar.gz', 'checksums.json']);
+    const result = detectChecksumAsset(release);
+
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe('checksums.json');
+    expect(result?.source).toBe('api');
+  });
+
+  it('prioritizes checksums.json over all legacy formats', () => {
+    const release = createReleaseWithAssets([
+      'checksums.txt',
+      'SHA256SUMS',
+      'checksums.json',
+      'binary.tar.gz.sha256',
+    ]);
+    const result = detectChecksumAsset(release);
+
+    expect(result?.name).toBe('checksums.json');
+    expect(result?.source).toBe('api');
+  });
+
+  it('falls back to legacy checksums.txt when checksums.json missing', () => {
+    const release = createReleaseWithAssets([
+      'checksums.txt',
+      'SHA256SUMS',
+      'binary.tar.gz',
+    ]);
+    const result = detectChecksumAsset(release);
+
+    expect(result?.name).toBe('checksums.txt');
+    expect(result?.source).toBe('legacy');
+  });
+
+  it('marks SHA256SUMS as legacy source', () => {
+    const release = createReleaseWithAssets(['binary.tar.gz', 'SHA256SUMS']);
+    const result = detectChecksumAsset(release);
+
+    expect(result?.name).toBe('SHA256SUMS');
+    expect(result?.source).toBe('legacy');
+  });
+
+  it('marks per-asset .sha256 files as legacy source', () => {
+    const release = createReleaseWithAssets([
+      'binary-linux.tar.gz',
+      'binary-linux.tar.gz.sha256',
+    ]);
+    const result = detectChecksumAsset(release);
+
+    expect(result?.source).toBe('legacy');
   });
 });
 
@@ -272,6 +326,94 @@ describe('computeReleaseSelection', () => {
     expect(state.releases[0].tag_name).toBe('v0.2.10');
     expect(state.releases[1].tag_name).toBe('v0.2.9');
     expect(state.releases[2].tag_name).toBe('v0.2.5');
+  });
+
+  // Checksum API tests
+  it('sets checksumSource to "api" when checksums.json is present', () => {
+    const releases = [
+      createRelease('v0.2.5', false, ['checksums.json', 'binary.tar.gz']),
+    ];
+
+    const state = computeReleaseSelection(releases, false);
+
+    expect(state.hasChecksums).toBe(true);
+    expect(state.checksumAsset?.name).toBe('checksums.json');
+    expect(state.checksumSource).toBe('api');
+  });
+
+  it('sets checksumSource to "legacy" when using checksums.txt', () => {
+    const releases = [
+      createRelease('v0.2.5', false, ['checksums.txt', 'binary.tar.gz']),
+    ];
+
+    const state = computeReleaseSelection(releases, false);
+
+    expect(state.hasChecksums).toBe(true);
+    expect(state.checksumAsset?.name).toBe('checksums.txt');
+    expect(state.checksumSource).toBe('legacy');
+  });
+
+  it('sets checksumSource to null when no checksums present', () => {
+    const releases = [
+      createRelease('v0.2.5', false, ['binary.tar.gz']),
+    ];
+
+    const state = computeReleaseSelection(releases, false);
+
+    expect(state.hasChecksums).toBe(false);
+    expect(state.checksumAsset).toBeNull();
+    expect(state.checksumSource).toBeNull();
+  });
+
+  // User acceptance criteria tests
+  it('stable release with checksum API → no warning (hasChecksums=true, source=api)', () => {
+    const releases = [
+      createRelease('v1.0.0', false, ['checksums.json', 'binary.tar.gz']),
+    ];
+
+    const state = computeReleaseSelection(releases, false);
+
+    expect(state.selectedRelease?.prerelease).toBe(false);
+    expect(state.hasChecksums).toBe(true);
+    expect(state.checksumSource).toBe('api');
+    expect(state.checksumAsset?.name).toBe('checksums.json');
+  });
+
+  it('missing checksum API → warning (hasChecksums=false, source=null)', () => {
+    const releases = [
+      createRelease('v1.0.0', false, ['binary.tar.gz']), // No checksums
+    ];
+
+    const state = computeReleaseSelection(releases, false);
+
+    expect(state.selectedRelease?.prerelease).toBe(false);
+    expect(state.hasChecksums).toBe(false);
+    expect(state.checksumSource).toBeNull();
+    expect(state.checksumAsset).toBeNull();
+  });
+
+  it('pre-release + checksum API → allowed but flagged (prerelease=true, source=api)', () => {
+    const releases = [
+      createRelease('v1.0.0-beta.1', true, ['checksums.json', 'binary.tar.gz']),
+    ];
+
+    const state = computeReleaseSelection(releases, true);
+
+    expect(state.selectedRelease?.prerelease).toBe(true);
+    expect(state.hasChecksums).toBe(true);
+    expect(state.checksumSource).toBe('api');
+    expect(state.checksumAsset?.name).toBe('checksums.json');
+  });
+
+  it('prefers checksums.json over legacy formats in selected release', () => {
+    const releases = [
+      createRelease('v1.0.0', false, ['checksums.json', 'checksums.txt', 'SHA256SUMS']),
+    ];
+
+    const state = computeReleaseSelection(releases, false);
+
+    expect(state.checksumAsset?.name).toBe('checksums.json');
+    expect(state.checksumSource).toBe('api');
   });
 });
 

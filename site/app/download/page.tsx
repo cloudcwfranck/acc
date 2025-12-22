@@ -11,8 +11,9 @@ interface ReleaseSelectionState {
   latestPrerelease: Release | null;
   selectedRelease: Release | null;
   includePrereleases: boolean;
-  checksumAsset: { name: string; url: string } | null;
+  checksumAsset: { name: string; url: string; source: 'api' | 'legacy' } | null;
   hasChecksums: boolean;
+  checksumSource: 'api' | 'legacy' | null;
 }
 
 interface Release {
@@ -97,7 +98,7 @@ function DownloadContent() {
     );
   }
 
-  const { selectedRelease, latestStable, latestPrerelease, hasChecksums, checksumAsset } = state;
+  const { selectedRelease, latestStable, latestPrerelease, hasChecksums, checksumAsset, checksumSource } = state;
 
   // Group assets by OS
   const binaryAssets = selectedRelease.assets.filter(asset =>
@@ -228,6 +229,16 @@ acc version`}
           <h2>Verify Downloads (SHA256)</h2>
           <p style={{ marginBottom: '1rem', color: 'rgba(var(--foreground-rgb), 0.7)' }}>
             Checksums available: <strong>Yes</strong> ({checksumAsset?.name})
+            {checksumSource === 'api' && (
+              <span style={{ marginLeft: '0.5rem', color: 'rgba(var(--foreground-rgb), 0.5)' }}>
+                • API (checksums.json)
+              </span>
+            )}
+            {checksumSource === 'legacy' && (
+              <span style={{ marginLeft: '0.5rem', color: 'rgba(var(--foreground-rgb), 0.5)' }}>
+                • Legacy format
+              </span>
+            )}
           </p>
           {checksums && <pre className={styles.checksums}>{checksums}</pre>}
           <div className={styles.verifySnippet}>

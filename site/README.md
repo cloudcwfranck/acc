@@ -57,9 +57,11 @@ npm test -- --coverage
 **Test Coverage:**
 - ✅ Semver sorting (v0.2.10 > v0.2.9)
 - ✅ Stable vs prerelease selection
-- ✅ Checksum detection (multiple formats: checksums.txt, SHA256SUMS, .sha256 files)
+- ✅ Checksum detection (checksums.json API + legacy formats)
+- ✅ Checksum source tracking (api vs legacy)
 - ✅ Single source of truth logic
 - ✅ Draft filtering
+- ✅ Acceptance criteria (stable+API→no warning, missing→warning, prerelease+API→flagged)
 
 ## Deployment
 
@@ -186,15 +188,22 @@ The website implements stable-by-default download behavior with **enterprise-gra
 - Stable versions ranked higher than prereleases of same version (v1.0.0 > v1.0.0-alpha)
 - Draft releases completely filtered out
 
-**Checksum Detection**:
-- Detects multiple checksum formats:
-  - `checksums.txt` (preferred)
+**Checksum Detection (First-class API)**:
+- **First-class API**: `checksums.json` - Authoritative source (preferred)
+  - Machine-readable JSON format
+  - Marked as "API (checksums.json)" in status page
+  - Never shows "Checksums not published" warning when present
+  - Recommended for all new releases
+- **Legacy fallback formats** (used only if checksums.json missing):
+  - `checksums.txt`
   - `SHA256SUMS`
   - `checksums.sha256`
   - `sha256sums.txt`
-  - Per-asset `.sha256` files (fallback)
+  - Per-asset `.sha256` files (lowest priority)
+- **Source tracking**: Status page shows whether checksums come from "API" or "Legacy format"
 - **Always checks against selected release** (no stable/prerelease mismatch)
 - Download page shows warning if checksums missing
+- Download page displays checksum source type (API vs Legacy)
 
 **Single Source of Truth**:
 - All logic in `lib/releases.ts` → `computeReleaseSelection()`

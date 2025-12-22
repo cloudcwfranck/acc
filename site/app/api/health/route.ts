@@ -75,6 +75,7 @@ export async function GET() {
         assetsOk,
         checksumsPresent: state.hasChecksums,
         checksumAsset: state.checksumAsset?.name || null,
+        checksumSource: state.checksumSource || null,
       },
     };
 
