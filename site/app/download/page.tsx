@@ -165,7 +165,7 @@ function DownloadContent() {
       {!showPrerelease && latestPrerelease && latestStable && (
         <div className={styles.info}>
           A pre-release version ({latestPrerelease.tag_name}) is available.
-          Enable "Include pre-releases" to download it.
+          Enable &quot;Include pre-releases&quot; to download it.
         </div>
       )}
 
