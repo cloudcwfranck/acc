@@ -155,16 +155,37 @@ assert_json_has_field() {
     local jq_expr="$2"
     local description="$3"
 
-    # Extract field name from jq expression (e.g., ".sbomPresent" -> "sbomPresent")
-    local field_name=$(echo "$jq_expr" | sed 's/^\.//; s/\[.*$//')
+    # Check if this is a nested field (has dot after removing leading dot)
+    # .result.input -> result.input (has dot) = nested
+    # .sbomPresent -> sbomPresent (no dot) = top-level
+    local without_leading_dot="${jq_expr#.}"
 
-    # Use 'has()' to check if field exists (works for false values too)
-    if echo "$json" | jq -e "has(\"$field_name\")" > /dev/null 2>&1; then
-        log_success "$description: field $jq_expr exists"
-        return 0
+    if [[ "$without_leading_dot" == *.* ]]; then
+        # Nested field like .result.input
+        # Split on last dot: .result.input -> .result and input
+        local parent="${jq_expr%.*}"   # .result
+        local field="${jq_expr##*.}"   # input
+
+        # Check if parent has the child field
+        if echo "$json" | jq -e "$parent | has(\"$field\")" > /dev/null 2>&1; then
+            log_success "$description: field $jq_expr exists"
+            return 0
+        else
+            log_error "$description: field $jq_expr missing"
+            return 1
+        fi
     else
-        log_error "$description: field $jq_expr missing"
-        return 1
+        # Top-level field like .sbomPresent
+        local field_name=$(echo "$jq_expr" | sed 's/^\.//')
+
+        # Use 'has()' to check if field exists (works for false values too)
+        if echo "$json" | jq -e "has(\"$field_name\")" > /dev/null 2>&1; then
+            log_success "$description: field $jq_expr exists"
+            return 0
+        else
+            log_error "$description: field $jq_expr missing"
+            return 1
+        fi
     fi
 }
 
