@@ -7,6 +7,143 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Supply-Chain Verification for acc upgrade
+
+#### Optional Cosign Signature & SLSA Provenance Verification (v0.2.7)
+
+**Summary**: Added enterprise-grade supply-chain verification to `acc upgrade` with optional cosign signature verification and SLSA provenance validation.
+
+**What's New:**
+
+- ✅ **Cosign signature verification** - `--verify-signature` flag for cryptographic signature verification
+- ✅ **SLSA provenance verification** - `--verify-provenance` flag for build provenance validation
+- ✅ **Combined enterprise mode** - Use both flags together for maximum security
+- ✅ **100% opt-in** - Default upgrade behavior unchanged (checksum-only)
+- ✅ **Clear error messages** - Actionable errors when tools are missing
+- ✅ **19 new tests** - Comprehensive test coverage for all verification modes
+
+**New Flags:**
+
+```bash
+acc upgrade --verify-signature                    # Verify cosign signature
+acc upgrade --verify-signature --cosign-key PATH  # With specific key
+acc upgrade --verify-provenance                    # Verify SLSA provenance
+acc upgrade --verify-signature --verify-provenance # Both (enterprise mode)
+```
+
+**Implementation:**
+
+- `verifyCosignSignature()` - Downloads `.sig` files and runs `cosign verify-blob`
+- `verifySLSAProvenance()` - Fetches `.intoto.jsonl` and validates structure
+- `findCosignBinary()` - Checks for cosign in PATH
+- New fields in `UpgradeOptions`: `VerifySignature`, `CosignKey`, `VerifyProvenance`
+- New fields in `UpgradeResult`: `SignatureVerified`, `ProvenanceVerified`
+
+**Verification Flow:**
+
+1. Download release asset (unchanged)
+2. Verify SHA256 checksum (unchanged)
+3. **[NEW]** Optional: Verify cosign signature if `--verify-signature`
+4. **[NEW]** Optional: Verify SLSA provenance if `--verify-provenance`
+5. Install binary (unchanged)
+
+**Provenance Checks:**
+
+- ✓ Valid SLSA predicate type (contains "slsa" or "provenance")
+- ✓ Builder identity is GitHub Actions
+- ✓ Build type is GitHub Actions workflow
+- ✓ Source repository is `cloudcwfranck/acc`
+
+**Supported Provenance Formats:**
+
+- `provenance.intoto.jsonl` (global)
+- `<tag>.intoto.jsonl` (per-release)
+- `<assetName>.intoto.jsonl` (per-asset)
+
+**Requirements:**
+
+- **Cosign verification**: Requires `cosign` in PATH (optional, only if `--verify-signature` used)
+- **Provenance verification**: No additional dependencies (pure Go)
+- **Default upgrade**: No new requirements (backward compatible)
+
+**Error Handling:**
+
+```bash
+# Cosign not installed
+$ acc upgrade --verify-signature
+Error: cosign is required for signature verification but was not found in PATH.
+Install cosign: https://docs.sigstore.dev/cosign/installation/
+
+# Provenance missing
+$ acc upgrade --verify-provenance
+Error: no SLSA provenance found for this release
+(tried: provenance.intoto.jsonl, v0.2.7.intoto.jsonl, acc_0.2.7_linux_amd64.tar.gz.intoto.jsonl)
+```
+
+**Output with Verification:**
+
+```
+Current version: v0.2.6
+Target version:  v0.2.7
+Asset:           acc_0.2.7_linux_amd64.tar.gz
+Checksum:        a1b2c3d4e5f6...
+Signature:       ✓ Verified
+Provenance:      ✓ Verified
+Installed to:    /usr/local/bin/acc
+
+Successfully upgraded from v0.2.6 to v0.2.7
+```
+
+**JSON Output:**
+
+```json
+{
+  "currentVersion": "v0.2.6",
+  "targetVersion": "v0.2.7",
+  "updated": true,
+  "signatureVerified": true,
+  "provenanceVerified": true,
+  "installPath": "/usr/local/bin/acc"
+}
+```
+
+**Tests (19 new, all passing):**
+
+- `TestUpgradeDefaultBehaviorUnchanged` - Verifies no behavior change without flags
+- `TestVerifySignatureRequiresCosign` - Cosign missing → actionable error
+- `TestVerifyProvenanceMissing` - Provenance missing → clear error
+- `TestVerifyProvenanceSuccess` - Valid provenance → success
+- `TestVerifyProvenanceInvalidJSON` - Invalid JSON → proper error
+- `TestVerifyProvenanceInvalidPredicateType` - Wrong predicate → error
+- `TestVerifyProvenanceNonGitHubBuilder` - Non-GitHub builder → error
+- `TestUpgradeWithBothVerifications` - Combined mode works
+- `TestFindCosignBinary` - Binary detection works
+
+**Files Modified:**
+
+- `internal/upgrade/upgrade.go` (+204 lines)
+- `cmd/acc/main.go` (+57 lines)
+- `internal/upgrade/upgrade_test.go` (+340 lines)
+- `README.md` (+146 lines)
+
+**Documentation:**
+
+- New "Enterprise-Grade Verification" section in README
+- Cosign signature verification guide
+- SLSA provenance verification guide
+- Combined enterprise mode examples
+- Release asset conventions
+
+**Backward Compatibility:**
+
+- ✅ Default `acc upgrade` behavior unchanged (checksum-only)
+- ✅ No new dependencies required
+- ✅ All existing tests pass (100% compatibility)
+- ✅ Verification is 100% opt-in via flags
+- ✅ No breaking changes to any commands
+
+**No Product Changes:** This release contains NO changes to acc core functionality. All changes are opt-in verification features for the `upgrade` command only.
+
 ### Added - Website & Documentation
 
 #### Official Website Launch (Vercel + GitHub Releases Backend)
