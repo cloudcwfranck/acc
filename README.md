@@ -256,20 +256,49 @@ acc run myimage:latest --cap-add NET_ADMIN
 
 ## Website
 
-The official acc website provides documentation, download links, and release information:
+The official acc website provides enterprise-grade download management with automatic updates:
 
 **🌐 [acc.vercel.app](https://acc.vercel.app)** *(deployed after v0.2.6 release)*
 
-### Features
+### Enterprise Features
 
-- **Auto-updating downloads** - Latest release with platform detection and checksums
-- **Release history** - Recent releases with changelogs
-- **Quick start guides** - Getting started documentation
-- **Auto-sync with GitHub Releases** - Updates within 5 minutes of new releases
+- **🎯 Stable-by-default downloads** - Always shows latest stable release (non-prerelease)
+- **⚠️ Pre-release support** - Optional toggle for early access with clear warnings
+- **🔐 Checksum verification** - SHA256 verification for all downloads
+- **📊 Operational health** - Real-time monitoring at `/api/health` and `/status`
+- **⚡ Auto-updates** - Updates within 60 seconds of new GitHub Releases
+- **🧪 CI-validated** - Every PR runs unit tests + smoke tests
+
+### How It Stays Up-to-Date
+
+**Dual Update Mechanism (Belt + Suspenders):**
+
+1. **Deploy Hook (Immediate)**: When a release is published on GitHub:
+   - GitHub Actions triggers Vercel deploy hook via `.github/workflows/site-deploy.yml`
+   - Site rebuilds with new release data in 30-60 seconds
+   - Critical path for urgent updates
+
+2. **ISR (Fallback)**: Incremental Static Regeneration with 60-second revalidation:
+   - Server-side API routes refetch release data every 60 seconds
+   - Guarantees updates even if deploy hook fails
+   - Zero-configuration fallback
+
+**Result**: New releases appear on the website within 1 minute, automatically.
+
+### Release Integrity
+
+Every release is validated before publication:
+
+- ✅ **Checksums required**: All platform archives must have SHA256 checksums
+- ✅ **Automated validation**: CI fails if checksums missing or invalid
+- ✅ **Download verification**: Website shows checksum verification in install snippet
+- ✅ **Health monitoring**: `/api/health` validates release completeness
+
+**What users see:**
+- If checksums present: Full SHA256 table + verification commands
+- If checksums missing: Warning banner "⚠️ Checksums not available for this release"
 
 ### Local Development
-
-The website is built with Next.js 14 and deployed on Vercel. To run it locally:
 
 ```bash
 cd site
@@ -279,18 +308,25 @@ npm install
 
 # Run development server
 npm run dev
-
 # Open http://localhost:3000
+
+# Run tests
+npm test
+
+# Production build
+npm run build
+npm run start
 ```
 
 ### Architecture
 
-- **Frontend**: Next.js 14 (App Router, TypeScript)
-- **Backend**: GitHub Releases API + repository content
+- **Frontend**: Next.js 14 (App Router, TypeScript, React Server Components)
+- **Backend**: GitHub Releases API (ISR-cached, 60s revalidation)
 - **Hosting**: Vercel
-- **Auto-updates**: ISR (Incremental Static Regeneration) + Deploy Hooks
+- **Auto-updates**: ISR (60s) + Deploy Hooks (immediate)
+- **Testing**: Jest (27 unit tests) + Smoke tests (health, download, status pages)
 
-See [site/README.md](site/README.md) and [docs/website.md](docs/website.md) for deployment and architecture details.
+See [site/README.md](site/README.md) for complete deployment, testing, and operational documentation.
 
 ## SBOM Workflows
 
