@@ -180,17 +180,28 @@
 
     <script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.7.0/dist/bundle/asciinema-player.min.js"></script>
     <script>
-        AsciinemaPlayer.create('acc.cast', document.getElementById('demo'), {
-            autoPlay: true,
-            loop: true,
-            speed: 1.5,
-            theme: 'monokai',
-            fit: 'width',
-            terminalFontSize: '14px',
-            terminalLineHeight: 1.4,
-            cols: 100,
-            rows: 30
-        });
+        // Determine the correct URL for the cast file
+        // Use relative path for local viewing, GitHub raw URL for htmlpreview
+        const castUrl = window.location.hostname.includes('htmlpreview') || window.location.hostname.includes('github.io')
+            ? 'https://raw.githubusercontent.com/cloudcwfranck/acc/main/docs/demo/acc.cast'
+            : 'acc.cast';
+
+        // Wait for AsciinemaPlayer to be fully loaded
+        if (typeof AsciinemaPlayer !== 'undefined') {
+            AsciinemaPlayer.create(castUrl, document.getElementById('demo'), {
+                autoPlay: true,
+                loop: true,
+                speed: 1.5,
+                theme: 'monokai',
+                fit: 'width',
+                terminalFontSize: '14px',
+                terminalLineHeight: 1.4,
+                cols: 100,
+                rows: 30
+            });
+        } else {
+            console.error('AsciinemaPlayer not loaded');
+        }
     </script>
 </body>
 </html>
