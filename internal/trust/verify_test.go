@@ -96,7 +96,7 @@ func TestVerifyResultEmptyArraysNeverNull(t *testing.T) {
 		VerificationStatus: "unknown",
 		AttestationCount:   0,
 		Attestations:       []AttestationDetail{}, // Empty array, not null
-		Errors:             []string{},             // Empty array, not null
+		Errors:             []string{},            // Empty array, not null
 	}
 
 	jsonStr := result.FormatJSON()

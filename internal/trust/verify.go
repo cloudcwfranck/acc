@@ -11,13 +11,13 @@ import (
 
 // VerifyResult represents attestation verification output
 type VerifyResult struct {
-	SchemaVersion      string               `json:"schemaVersion"`
-	ImageRef           string               `json:"imageRef"`
-	ImageDigest        string               `json:"imageDigest"`
-	VerificationStatus string               `json:"verificationStatus"` // verified, unverified, unknown
-	AttestationCount   int                  `json:"attestationCount"`
-	Attestations       []AttestationDetail  `json:"attestations"`
-	Errors             []string             `json:"errors"`
+	SchemaVersion      string              `json:"schemaVersion"`
+	ImageRef           string              `json:"imageRef"`
+	ImageDigest        string              `json:"imageDigest"`
+	VerificationStatus string              `json:"verificationStatus"` // verified, unverified, unknown
+	AttestationCount   int                 `json:"attestationCount"`
+	Attestations       []AttestationDetail `json:"attestations"`
+	Errors             []string            `json:"errors"`
 }
 
 // AttestationDetail represents details about a single attestation
