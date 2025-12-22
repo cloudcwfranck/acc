@@ -47,6 +47,7 @@ acc upgrade --help
 # Subcommands
 acc trust --help
 acc trust status --help
+acc trust verify --help
 acc policy --help
 acc policy explain --help
 
@@ -324,7 +325,93 @@ acc trust status --json <image>
 - Changing JSON schema is a MAJOR version bump
 - v0.2.7 added required fields: sbomPresent, attestations, timestamp (backward compatible)
 
-#### 9. Run Command
+#### 9. Trust Verify (v0.3.0)
+
+```bash
+acc trust verify --json <image>
+```
+
+**Purpose**: Verify that attestations exist and are valid for an image (local-only, read-only).
+
+**Guarantees** (v0.3.0):
+- MUST be read-only (no state mutation)
+- MUST work offline (local-only, no registry access)
+- MUST return deterministic JSON with stable keys
+- MUST validate attestation schema and digest matching
+- MUST handle missing attestations gracefully
+
+**Exit Codes**:
+- 0: Attestations verified (one or more valid attestations found)
+- 1: Attestations unverified (no attestations OR invalid attestations)
+- 2: Cannot verify (image not found, digest resolution failed)
+
+**JSON Schema** (v0.3.0):
+```json
+{
+  "schemaVersion": "v0.3",
+  "imageRef": string,
+  "imageDigest": string,
+  "verificationStatus": "verified|unverified|unknown",
+  "attestationCount": number,
+  "attestations": [
+    {
+      "path": string,
+      "timestamp": string,
+      "verificationStatus": string,
+      "verificationResultsHash": string,
+      "validSchema": boolean,
+      "digestMatch": boolean
+    }
+  ],
+  "errors": array
+}
+```
+
+**Required Fields** (v0.3.0):
+- `schemaVersion`: Always "v0.3"
+- `imageRef`: Image reference provided by user
+- `imageDigest`: Resolved digest (empty string "" if unavailable)
+- `verificationStatus`: One of "verified", "unverified", "unknown"
+- `attestationCount`: Number of attestations found (0 if none)
+- `attestations`: Array of attestation details (empty array [] if none, never null)
+- `errors`: Array of error messages (empty array [] if no errors, never null)
+
+**Attestation Detail Fields**:
+- `path`: Relative path to attestation file
+- `timestamp`: ISO 8601 timestamp from attestation
+- `verificationStatus`: Status from attestation evidence (pass/fail)
+- `verificationResultsHash`: Hash from attestation evidence
+- `validSchema`: Boolean indicating valid attestation JSON schema
+- `digestMatch`: Boolean indicating subject digest matches image digest
+
+**Verification Logic**:
+1. Resolve image digest using docker/podman/nerdctl inspect
+2. Find attestations in `.acc/attestations/<digest-prefix>/`
+3. Validate each attestation:
+   - JSON schema validity (required fields exist)
+   - Digest match (subject.imageDigest == resolved digest)
+4. Return overall status:
+   - `verified` if all attestations valid (exit 0)
+   - `unverified` if no attestations or any invalid (exit 1)
+   - `unknown` if digest cannot be resolved (exit 2)
+
+**Local-Only Constraint**:
+- MUST NOT access network or registry
+- MUST only read local `.acc/attestations/` directory
+- MUST NOT require cryptographic signatures (future feature)
+
+**Read-Only Constraint**:
+- MUST NOT modify any files
+- MUST NOT create or update state
+- MUST NOT affect other commands (verify, attest, status)
+
+**Breaking Changes**:
+- Removing digest matching is a MAJOR version bump (security regression)
+- Changing exit codes is a MAJOR version bump
+- Changing JSON schema is a MAJOR version bump
+- Adding network/registry access is a MINOR version bump (opt-in feature)
+
+#### 10. Run Command
 
 ```bash
 acc run <image> [-- command args...]
@@ -388,6 +475,7 @@ acc run <image> [-- command args...]
 | `acc attest` | Attestation created | Mismatch or verification state missing | N/A | MUST fail when image != last verified |
 | `acc inspect` | Inspection succeeded | N/A | N/A | Always exit 0, check `.status` field |
 | `acc trust status` | Status is pass | Status is fail or warn | Status is unknown (cannot compute) | Exit codes unchanged in v0.2.7 |
+| `acc trust verify` | Attestations verified | Attestations unverified (none or invalid) | Cannot verify (image not found) | v0.3.0: Local-only, read-only |
 | `acc run` | Container ran successfully | Verification failed | Runtime error | Verification gate enforced |
 | `acc push` | Push succeeded | Push failed or verification gate blocked | N/A | Verification gate enforced |
 | `acc policy explain` | Explanation available | Varies by implementation | Varies by implementation | |
@@ -731,6 +819,20 @@ Update this contract when:
 
 ## Version History
 
+### v0.3.0 (2025-12-22)
+- **Added**: `acc trust verify` command for attestation verification
+  - Local-only, read-only verification of attestations
+  - Exit codes: 0=verified, 1=unverified, 2=unknown
+  - JSON schema v0.3 with required fields
+  - Validates attestation schema and digest matching
+- **Contract**: Trust Verify guarantees documented
+  - MUST be read-only (no state mutation)
+  - MUST work offline (no network/registry access)
+  - MUST NOT require cryptographic signatures (future feature)
+- **Added**: Tier 1 E2E tests for trust verify (3 test cases)
+- **Added**: Unit tests for attestation verification logic
+- **Breaking**: None (backward compatible, new command only)
+
 ### v0.2.7 (2025-12-22)
 - **Contract**: Trust Status JSON schema stabilized with required fields
   - `sbomPresent` MUST always be set as boolean (never null)
@@ -779,5 +881,5 @@ Update this contract when:
 ---
 
 **Last Updated**: 2025-12-22
-**Contract Version**: v0.2.7
+**Contract Version**: v0.3.0
 **Maintained By**: acc core team

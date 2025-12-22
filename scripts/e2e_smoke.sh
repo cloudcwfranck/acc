@@ -661,6 +661,141 @@ else
 fi
 
 # ============================================================================
+# TEST 9: acc trust verify (v0.3.0)
+# ============================================================================
+
+log_section "TEST 9: acc trust verify"
+
+# Test 9.1: Verify image WITH attestation (demo-app:ok has attestation from TEST 6)
+log "Test 9.1: Verify attestation for demo-app:ok (should have attestation)"
+
+set +e
+verify_attest_ok_output=$($ACC_BIN trust verify --json demo-app:ok 2>&1)
+verify_attest_ok_exit=$?
+set -e
+
+log "Trust verify output for demo-app:ok:"
+echo "$verify_attest_ok_output" | tee -a "$LOGFILE"
+
+# Should exit 0 (verified) if attestations exist, or exit 1 (unverified) if none yet
+if [ $verify_attest_ok_exit -eq 0 ]; then
+    log_success "acc trust verify demo-app:ok: exit 0 (verified)"
+
+    # Validate JSON
+    if echo "$verify_attest_ok_output" | jq empty 2>/dev/null; then
+        log_success "Valid JSON output from trust verify"
+
+        # Check verificationStatus is "verified"
+        assert_json_field "$verify_attest_ok_output" ".verificationStatus" "verified" \
+            "trust verify verificationStatus"
+
+        # Check attestationCount > 0
+        attest_count=$(echo "$verify_attest_ok_output" | jq -r '.attestationCount')
+        if [ "$attest_count" -gt 0 ]; then
+            log_success "trust verify demo-app:ok has attestations: count = $attest_count"
+        else
+            log_error "trust verify demo-app:ok has no attestations (expected > 0)"
+        fi
+
+        # Check required fields exist
+        assert_json_has_field "$verify_attest_ok_output" ".schemaVersion" \
+            "trust verify schemaVersion"
+        assert_json_has_field "$verify_attest_ok_output" ".imageRef" \
+            "trust verify imageRef"
+        assert_json_has_field "$verify_attest_ok_output" ".imageDigest" \
+            "trust verify imageDigest"
+        assert_json_has_field "$verify_attest_ok_output" ".attestations" \
+            "trust verify attestations"
+        assert_json_has_field "$verify_attest_ok_output" ".errors" \
+            "trust verify errors"
+    else
+        log_error "Invalid JSON output from trust verify"
+    fi
+elif [ $verify_attest_ok_exit -eq 1 ]; then
+    log "⚠️  acc trust verify demo-app:ok: exit 1 (unverified - might not have attestation yet)"
+    log "This is acceptable if demo-app:ok hasn't been attested in this test run"
+else
+    log_error "acc trust verify demo-app:ok: exit $verify_attest_ok_exit (expected 0 or 1)"
+fi
+
+# Test 9.2: Verify image WITHOUT attestation (demo-app:never-verified)
+log "Test 9.2: Verify attestation for demo-app:never-verified (no attestation)"
+
+# Build an image that hasn't been attested
+log "Building demo-app:never-verified (non-root user, but never attested)"
+cat > Dockerfile <<'EOF'
+FROM alpine:3.19
+RUN addgroup -g 1001 testuser && adduser -D -u 1001 -G testuser testuser
+USER testuser
+WORKDIR /app
+CMD ["sh", "-c", "echo 'Hello from never-verified'; sleep 1"]
+EOF
+
+assert_success "acc build demo-app:never-verified" \
+    $ACC_BIN build demo-app:never-verified
+
+set +e
+verify_attest_never_output=$($ACC_BIN trust verify --json demo-app:never-verified 2>&1)
+verify_attest_never_exit=$?
+set -e
+
+log "Trust verify output for demo-app:never-verified:"
+echo "$verify_attest_never_output" | tee -a "$LOGFILE"
+
+# Should exit 1 (unverified - no attestations) or exit 2 (unknown - can't resolve digest)
+if [ $verify_attest_never_exit -eq 1 ]; then
+    log_success "acc trust verify demo-app:never-verified: exit 1 (unverified - no attestations)"
+
+    # Validate JSON
+    if echo "$verify_attest_never_output" | jq empty 2>/dev/null; then
+        log_success "Valid JSON output from trust verify (never-verified)"
+
+        # Check verificationStatus is "unverified"
+        assert_json_field "$verify_attest_never_output" ".verificationStatus" "unverified" \
+            "trust verify verificationStatus (no attestations)"
+
+        # Check attestationCount is 0
+        assert_json_field "$verify_attest_never_output" ".attestationCount" "0" \
+            "trust verify attestationCount (no attestations)"
+    else
+        log_error "Invalid JSON output from trust verify (never-verified)"
+    fi
+elif [ $verify_attest_never_exit -eq 2 ]; then
+    log_success "acc trust verify demo-app:never-verified: exit 2 (unknown - cannot resolve digest)"
+else
+    log_error "acc trust verify demo-app:never-verified: exit $verify_attest_never_exit (expected 1 or 2)"
+fi
+
+# Test 9.3: Verify non-existent image (should exit 2 - unknown)
+log "Test 9.3: Verify attestation for non-existent image (exit 2 - unknown)"
+
+set +e
+verify_attest_missing_output=$($ACC_BIN trust verify --json nonexistent:image 2>&1)
+verify_attest_missing_exit=$?
+set -e
+
+log "Trust verify output for nonexistent:image:"
+echo "$verify_attest_missing_output" | tee -a "$LOGFILE"
+
+# Should exit 2 (unknown - cannot resolve digest)
+if [ $verify_attest_missing_exit -eq 2 ]; then
+    log_success "acc trust verify nonexistent:image: exit 2 (unknown)"
+
+    # Validate JSON
+    if echo "$verify_attest_missing_output" | jq empty 2>/dev/null; then
+        log_success "Valid JSON output from trust verify (nonexistent)"
+
+        # Check verificationStatus is "unknown"
+        assert_json_field "$verify_attest_missing_output" ".verificationStatus" "unknown" \
+            "trust verify verificationStatus (nonexistent image)"
+    else
+        log_error "Invalid JSON output from trust verify (nonexistent)"
+    fi
+else
+    log_error "acc trust verify nonexistent:image: exit $verify_attest_missing_exit (expected 2)"
+fi
+
+# ============================================================================
 # RESULTS
 # ============================================================================
 

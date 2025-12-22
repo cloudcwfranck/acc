@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Attestation Verification (v0.3.0)
+
+**Summary**: New `acc trust verify` command for local-only, read-only attestation verification. Validates that attestations exist and are valid for a given image.
+
+**What's New:**
+
+- ✅ **New command: `acc trust verify`** - Verify attestations exist and are valid (local-only, read-only)
+- ✅ **Exit code contract** - 0=verified, 1=unverified, 2=unknown (cannot resolve digest)
+- ✅ **JSON schema v0.3** - Deterministic output with all required fields always present
+- ✅ **Schema validation** - Checks attestation JSON has required fields
+- ✅ **Digest matching** - Validates attestation subject digest matches image digest
+- ✅ **Comprehensive tests** - 3 E2E test cases + 7 unit tests for contract compliance
+
+**Usage:**
+
+```bash
+# Verify attestations for an image (with attestations)
+acc trust verify demo-app:ok
+# Exit 0 (verified)
+
+# Verify unattested image
+acc trust verify demo-app:never-verified
+# Exit 1 (unverified - no attestations)
+
+# Verify non-existent image
+acc trust verify nonexistent:image
+# Exit 2 (unknown - cannot resolve digest)
+
+# JSON output
+acc trust verify --json demo-app:ok
+{
+  "schemaVersion": "v0.3",
+  "imageRef": "demo-app:ok",
+  "imageDigest": "abc123def456",
+  "verificationStatus": "verified",
+  "attestationCount": 1,
+  "attestations": [
+    {
+      "path": ".acc/attestations/abc123/20250122-120000-attestation.json",
+      "timestamp": "2025-01-22T12:00:00Z",
+      "verificationStatus": "pass",
+      "verificationResultsHash": "sha256:...",
+      "validSchema": true,
+      "digestMatch": true
+    }
+  ],
+  "errors": []
+}
+```
+
+**Contract Guarantees:**
+
+- **Local-only**: No network or registry access required
+- **Read-only**: No state mutation, no file modifications
+- **Deterministic JSON**: All fields always present (arrays never null)
+- **Schema validation**: Checks required fields (schemaVersion, timestamp, subject, evidence)
+- **Digest matching**: Validates subject.imageDigest matches resolved image digest
+
+**Files Changed:**
+
+- `internal/trust/verify.go` - Core attestation verification logic (~230 lines)
+- `internal/trust/verify_test.go` - Unit tests for exit codes and JSON contract (~250 lines)
+- `cmd/acc/main.go` - Wire up `acc trust verify` subcommand
+- `scripts/e2e_smoke.sh` - Add Test 9 with 3 verification scenarios
+- `scripts/cli_help_matrix.sh` - Add trust verify to Tier 0 tests
+- `docs/testing-contract.md` - Document v0.3.0 contract and guarantees
+
+**Breaking Changes:** None - v0.3.0 is a backward-compatible minor version bump.
+
+**Future Work (Out of Scope):**
+- Cryptographic signature verification
+- Registry attestation fetch
+- Policy enforcement (blocking acc run if unverified)
+- Attestation expiry checks
+
+---
+
 ### Enhanced - Trust + Attestation Improvements (v0.2.7)
 
 **Summary**: Strengthened `acc trust status` and `acc attest` as production-ready features with deterministic JSON output, per-image attestation isolation, and comprehensive test coverage.

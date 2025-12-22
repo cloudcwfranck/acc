@@ -501,8 +501,9 @@ func NewTrustCmd() *cobra.Command {
 		},
 	}
 
-	// Add status subcommand
+	// Add subcommands
 	cmd.AddCommand(NewTrustStatusCmd())
+	cmd.AddCommand(NewTrustVerifyCmd())
 	return cmd
 }
 
@@ -540,6 +541,49 @@ func NewTrustStatusCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to check")
+
+	return cmd
+}
+
+func NewTrustVerifyCmd() *cobra.Command {
+	var imageRef string
+
+	cmd := &cobra.Command{
+		Use:   "verify [image]",
+		Short: "Verify attestations for an image",
+		Long:  "Verify that attestations exist and are valid for an image (local-only, read-only)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ref := imageRef
+			if len(args) > 0 {
+				ref = args[0]
+			}
+
+			if ref == "" {
+				return fmt.Errorf("image reference required\n\nUsage: acc trust verify <image>")
+			}
+
+			// Verify attestations (v0.3.0: local-only, read-only)
+			result, err := trust.VerifyAttestations(ref, jsonFlag)
+			if err != nil {
+				// Still print JSON if requested, even on error
+				if jsonFlag && result != nil {
+					fmt.Println(result.FormatJSON())
+				}
+				os.Exit(result.ExitCode())
+				return nil
+			}
+
+			if jsonFlag {
+				fmt.Println(result.FormatJSON())
+			}
+
+			os.Exit(result.ExitCode())
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to verify")
 
 	return cmd
 }
