@@ -54,9 +54,19 @@ export function sortReleasesBySemver(releases: GitHubRelease[]): GitHubRelease[]
 }
 
 /**
- * Checksum file patterns to detect (in priority order)
+ * Checksum asset with source type
  */
-const CHECKSUM_PATTERNS = [
+export interface ChecksumAsset {
+  name: string;
+  url: string;
+  source: 'api' | 'legacy';
+}
+
+/**
+ * Legacy checksum file patterns to detect (in priority order)
+ * Only used if checksums.json is not available
+ */
+const LEGACY_CHECKSUM_PATTERNS = [
   'checksums.txt',
   'checksums.sha256',
   'SHA256SUMS',
@@ -66,23 +76,42 @@ const CHECKSUM_PATTERNS = [
 
 /**
  * Detect if checksums are available for a release
- * Returns the checksum asset if found, null otherwise
+ * Prefers checksums.json (API) over legacy filename heuristics
+ * Returns the checksum asset with source type if found, null otherwise
  */
-export function detectChecksumAsset(release: GitHubRelease): { name: string; url: string } | null {
-  // Check for standard checksum files
-  for (const pattern of CHECKSUM_PATTERNS) {
+export function detectChecksumAsset(release: GitHubRelease): ChecksumAsset | null {
+  // First-class API: Check for checksums.json (authoritative source)
+  const checksumJson = release.assets.find(a => a.name === 'checksums.json');
+  if (checksumJson) {
+    return {
+      name: checksumJson.name,
+      url: checksumJson.browser_download_url,
+      source: 'api',
+    };
+  }
+
+  // Legacy fallback: Check for standard checksum files
+  for (const pattern of LEGACY_CHECKSUM_PATTERNS) {
     const asset = release.assets.find(a => a.name === pattern || a.name.toLowerCase() === pattern.toLowerCase());
     if (asset) {
-      return { name: asset.name, url: asset.browser_download_url };
+      return {
+        name: asset.name,
+        url: asset.browser_download_url,
+        source: 'legacy',
+      };
     }
   }
 
-  // Check for per-asset .sha256 files (fallback)
+  // Legacy fallback: Check for per-asset .sha256 files
   const sha256Assets = release.assets.filter(a => a.name.endsWith('.sha256'));
   if (sha256Assets.length > 0) {
     // If we have per-asset sha256 files, checksums are available
     // Return the first one as a signal
-    return { name: sha256Assets[0].name, url: sha256Assets[0].browser_download_url };
+    return {
+      name: sha256Assets[0].name,
+      url: sha256Assets[0].browser_download_url,
+      source: 'legacy',
+    };
   }
 
   return null;
@@ -102,10 +131,12 @@ export interface ReleaseSelectionState {
   selectedRelease: GitHubRelease | null;
   /** Whether to include prereleases */
   includePrereleases: boolean;
-  /** Checksum asset for selected release */
-  checksumAsset: { name: string; url: string } | null;
+  /** Checksum asset for selected release (with source type) */
+  checksumAsset: ChecksumAsset | null;
   /** Whether checksums are available */
   hasChecksums: boolean;
+  /** Checksum source type: 'api' (checksums.json) or 'legacy' (text files) */
+  checksumSource: 'api' | 'legacy' | null;
 }
 
 /**
@@ -148,6 +179,7 @@ export function computeReleaseSelection(
     includePrereleases,
     checksumAsset,
     hasChecksums: checksumAsset !== null,
+    checksumSource: checksumAsset?.source || null,
   };
 }
 

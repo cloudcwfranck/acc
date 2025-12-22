@@ -13,6 +13,8 @@ interface HealthStatus {
     latestPrereleaseTag: string | null;
     assetsOk: boolean;
     checksumsPresent: boolean;
+    checksumAsset?: string | null;
+    checksumSource?: 'api' | 'legacy' | null;
     error?: string;
   };
 }
@@ -139,8 +141,22 @@ export default function StatusPage() {
             <span className={styles.label}>Checksums Available:</span>
             <span className={health.github.checksumsPresent ? styles.valueOk : styles.valueWarn}>
               {health.github.checksumsPresent ? 'Yes' : 'No'}
+              {health.github.checksumAsset && (
+                <span style={{ marginLeft: '0.5rem', opacity: 0.7 }}>
+                  ({health.github.checksumAsset})
+                </span>
+              )}
             </span>
           </div>
+
+          {health.github.checksumSource && (
+            <div className={styles.metric}>
+              <span className={styles.label}>Checksum Source:</span>
+              <span className={health.github.checksumSource === 'api' ? styles.valueOk : styles.value}>
+                {health.github.checksumSource === 'api' ? 'API (checksums.json)' : 'Legacy format'}
+              </span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -185,10 +201,11 @@ export default function StatusPage() {
             {health.github.latestStableTag && !health.github.checksumsPresent && (
               <div className={styles.issue}>
                 <h3>Checksums Not Published</h3>
-                <p>The checksums.txt file is missing from the latest release.</p>
+                <p>No checksum files found in the latest release.</p>
                 <ul>
                   <li>Download verification will not be available</li>
-                  <li>Consider re-publishing the release with checksums</li>
+                  <li>Recommended: Publish checksums.json (first-class API)</li>
+                  <li>Alternative: Include legacy checksum files (checksums.txt, SHA256SUMS, etc.)</li>
                 </ul>
               </div>
             )}
