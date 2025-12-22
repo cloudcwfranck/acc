@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "v0.2",
+  "imageRef": "never-verified:latest",
+  "status": "unknown",
+  "sbomPresent": false,
+  "violations": [],
+  "warnings": [],
+  "attestations": [],
+  "timestamp": ""
+}

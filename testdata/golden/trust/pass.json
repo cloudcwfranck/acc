@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "v0.2",
+  "imageRef": "demo-app:ok",
+  "status": "pass",
+  "sbomPresent": true,
+  "violations": [],
+  "warnings": [],
+  "attestations": [],
+  "timestamp": "2025-01-15T10:00:00Z"
+}

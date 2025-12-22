@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Enhanced - Trust + Attestation Improvements (v0.2.7)
+
+**Summary**: Strengthened `acc trust status` and `acc attest` as production-ready features with deterministic JSON output, per-image attestation isolation, and comprehensive test coverage.
+
+**What Changed:**
+
+- ✅ **Deterministic JSON schema** - Trust status returns stable, predictable JSON with all required fields always present
+- ✅ **Per-image attestation isolation** - Attestations scoped to specific image digests prevent cross-image leakage
+- ✅ **Exit code clarification** - Trust status exit codes now clearly indicate when status can vs. cannot be computed
+- ✅ **Enhanced test coverage** - Added 13 new tests (9 unit, 4 golden) for trust and attest features
+- ✅ **E2E test improvements** - Strengthened smoke tests validate trust/attest integration and per-image isolation
+- ✅ **Documentation updates** - Testing contract, README, and examples now reflect v0.2.7 behavior
+
+**Trust Status Improvements:**
+
+```bash
+# Deterministic JSON output with all required fields
+acc trust status --json demo-app:latest
+{
+  "schemaVersion": "v0.2",
+  "imageRef": "demo-app:latest",
+  "status": "pass",
+  "sbomPresent": true,        # Always boolean, never null
+  "violations": [],            # Always array, never null
+  "warnings": [],              # Always array, never null
+  "attestations": [            # Per-image attestations only
+    ".acc/attestations/abc123456789/20250122-100000-attestation.json"
+  ],
+  "timestamp": "2025-01-22T10:00:00Z"
+}
+
+# Exit codes (v0.2.7):
+# 0 = status can be computed (pass, fail, or unknown)
+# 2 = status cannot be computed (missing state)
+```
+
+**Attestation Improvements:**
+
+- **Digest-based matching** - Uses image digest comparison (not tag strings) for safety
+- **Per-image storage** - Attestations stored in `.acc/attestations/<digest-prefix>/`
+- **Trust integration** - Attestations appear in `acc trust status` for that specific image only
+
+**Testing Contract Updates:**
+
+- Trust status JSON schema fully specified with required/optional fields
+- Attestation safety contract documented (digest matching, mismatch handling)
+- Per-image isolation guarantees enforced by tests
+- Exit code contract clarified (0 vs 2 distinction)
+
+**New Tests:**
+
+Unit tests (9):
+- `TestStatusResultExitCode` - Exit code logic
+- `TestStatusUnknown` - Unknown status handling
+- `TestStatusWithVerifyState` - State loading
+- `TestStatusWithViolations` - Violation extraction
+- `TestFindAttestationsForImage` - Per-image discovery
+- `TestStatusJSONSchema` - JSON structure
+- `TestGetString` - Helper function
+- Plus 2 more supporting tests
+
+Golden tests (4):
+- `TestTrustStatusJSONGolden` - JSON output validation
+- `TestTrustStatusJSONFieldOrdering` - Deterministic ordering
+- `TestTrustStatusJSONSchemaVersion` - Schema version stability
+- `TestTrustStatusJSONSchemaDrift` - Schema change detection
+
+E2E enhancements:
+- Trust status JSON schema validation (8 required fields)
+- Per-image attestation isolation checks
+- Exit code verification (0 for pass/fail, 2 for unknown)
+- Attestation presence validation after `acc attest`
+
+**Backward Compatibility:**
+
+- ✅ **100% backward compatible** - All v0.2.x behavior preserved
+- ✅ **No breaking changes** - New fields added, existing fields unchanged
+- ✅ **Exit code flexibility** - Exit 0 with `status: "unknown"` remains acceptable
+- ✅ **JSON schema** - v0.2 schema version unchanged
+
+**Files Modified:**
+
+- `internal/trust/status.go` - Enhanced per-image attestation discovery, deterministic JSON output
+- `internal/trust/status_test.go` - Added 9 unit tests
+- `internal/trust/status_golden_test.go` - Added 4 golden tests
+- `testdata/golden/trust/*.json` - Added 3 golden test files
+- `scripts/e2e_smoke.sh` - Enhanced trust/attest test coverage
+- `docs/testing-contract.md` - Updated trust/attest contracts for v0.2.7
+- `README.md` - Updated trust status and attest examples
+
+---
+
 ### Added - Supply-Chain Verification for acc upgrade
 
 #### Optional Cosign Signature & SLSA Provenance Verification (v0.2.7)

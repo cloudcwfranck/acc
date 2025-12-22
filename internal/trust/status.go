@@ -46,15 +46,17 @@ func Status(imageRef string, outputJSON bool) (*StatusResult, error) {
 	// Load verification state
 	state, err := loadVerifyState(imageRef)
 	if err != nil {
-		// v0.2.1: Always return result with status "unknown" (exit code 2)
+		// v0.2.7: Always return result with status "unknown" (exit code 2)
 		// instead of error (exit code 1) when state not found
 		result := &StatusResult{
 			SchemaVersion: "v0.2",
 			ImageRef:      imageRef,
 			Status:        "unknown",
+			SBOMPresent:   false, // v0.2.7: Ensure always set
 			Violations:    []Violation{},
 			Warnings:      []Violation{},
 			Attestations:  []string{},
+			Timestamp:     "", // v0.2.7: Empty string for unknown state
 		}
 
 		if !outputJSON {
@@ -65,13 +67,17 @@ func Status(imageRef string, outputJSON bool) (*StatusResult, error) {
 		return result, nil
 	}
 
-	// Build result from state
+	// Resolve digest for per-image attestation lookup
+	digest, _ := resolveImageDigest(imageRef)
+
+	// Build result from state (v0.2.7: ensure all fields initialized)
 	result := &StatusResult{
 		SchemaVersion: "v0.2",
 		ImageRef:      state.ImageRef,
 		Status:        state.Status,
 		ProfileUsed:   state.ProfileUsed,
 		Timestamp:     state.Timestamp,
+		SBOMPresent:   false, // Default, will be set below
 		Violations:    []Violation{},
 		Warnings:      []Violation{},
 		Attestations:  []string{},
@@ -105,13 +111,15 @@ func Status(imageRef string, outputJSON bool) (*StatusResult, error) {
 		}
 	}
 
-	// Check SBOM
+	// Check SBOM (v0.2.7: ensure always set as boolean)
 	if sbomPresent, ok := state.Result["sbomPresent"].(bool); ok {
 		result.SBOMPresent = sbomPresent
+	} else {
+		result.SBOMPresent = false
 	}
 
-	// Find attestations
-	result.Attestations = findAttestations()
+	// v0.2.7: Find attestations for this specific image (per-image isolation)
+	result.Attestations = findAttestationsForImage(digest)
 
 	// Output results
 	if outputJSON {
@@ -191,9 +199,42 @@ func resolveImageDigest(imageRef string) (string, error) {
 	return "", fmt.Errorf("could not resolve digest for %s", imageRef)
 }
 
-// findAttestations looks for attestation files
+// findAttestations looks for attestation files (all images)
 func findAttestations() []string {
 	attestDir := filepath.Join(".acc", "attestations")
+	if _, err := os.Stat(attestDir); os.IsNotExist(err) {
+		return []string{}
+	}
+
+	var attestations []string
+	filepath.Walk(attestDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && filepath.Ext(path) == ".json" {
+			attestations = append(attestations, path)
+		}
+		return nil
+	})
+
+	return attestations
+}
+
+// findAttestationsForImage looks for attestation files for a specific image digest
+// v0.2.7: Per-image attestation isolation - only returns attestations for this digest
+func findAttestationsForImage(digest string) []string {
+	if digest == "" {
+		// If digest not available, return all attestations as fallback
+		return findAttestations()
+	}
+
+	// Use first 12 chars of digest to match directory structure
+	digestPrefix := digest
+	if len(digest) > 12 {
+		digestPrefix = digest[:12]
+	}
+
+	attestDir := filepath.Join(".acc", "attestations", digestPrefix)
 	if _, err := os.Stat(attestDir); os.IsNotExist(err) {
 		return []string{}
 	}
