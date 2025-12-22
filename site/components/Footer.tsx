@@ -12,6 +12,12 @@ export default function Footer() {
           </div>
           <div className={styles.links}>
             <a
+              href="/status"
+              className={styles.statusLink}
+            >
+              <span className={styles.statusDot}>●</span> Status
+            </a>
+            <a
               href="https://github.com/cloudcwfranck/acc"
               target="_blank"
               rel="noopener noreferrer"

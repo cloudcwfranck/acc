@@ -78,6 +78,166 @@ This release is a **website and documentation release** that:
 
 **No Test Changes:** This release contains NO changes to test scripts or CI workflows for the CLI tool. All test infrastructure remains unchanged.
 
+#### Enterprise Website Enhancements - Production-Grade Features
+
+**Summary**: Enhanced website with enterprise-grade operational features including stable-by-default downloads, pre-release support, operational health monitoring, and comprehensive testing.
+
+**What's New:**
+
+- ✅ **Stable-by-default downloads** - Download page shows latest stable release by default (prerelease=false, draft=false)
+- ✅ **Pre-release toggle** - Optional "Include pre-releases" checkbox with localStorage persistence
+- ✅ **Pre-release banner** - Site-wide warning when pre-release is newer than stable
+- ✅ **Operational health monitoring** - `/api/health` endpoint + `/status` dashboard for service health
+- ✅ **Auto-update optimization** - Reduced ISR interval from 300s to 60s for faster updates
+- ✅ **Enhanced release selection** - Intelligent logic to show stable or prerelease based on user preference
+- ✅ **Warning indicators** - Clear pre-release warnings: "Not recommended for production use"
+- ✅ **Status indicator** - Footer shows pulsing green dot with link to status page
+- ✅ **Comprehensive testing** - Jest test suite with 27 test cases for release logic
+
+**Website Architecture Updates:**
+
+- **ISR Interval**: Changed from 300s (5 min) to 60s (1 min) for faster release updates
+- **Release Selection**: Dual-mode (stable/prerelease) with automatic date comparison
+- **Health Monitoring**: Server-side health checks with 60s caching to prevent API hammering
+- **Client Preferences**: localStorage for prerelease toggle + URL parameter support (?prerelease=1)
+- **State Persistence**: Banner dismissal per-version in localStorage
+
+**New API Endpoints:**
+
+- `GET /api/health` - Returns JSON with GitHub API health, rate limits, release status
+- `GET /api/github/releases` - Server-side releases API with ISR caching
+
+**New Pages:**
+
+- `/status` - Real-time operational dashboard with auto-refresh (60s interval)
+
+**New Components:**
+
+- `PrereleaseBanner.tsx` - Dismissible warning banner for pre-releases
+- `PrereleaseBannerWrapper.tsx` - Server component for banner conditional rendering
+
+**GitHub API Library Updates:**
+
+- Added `getLatestStableRelease()` - Filters for !prerelease && !draft
+- Added `getLatestPrerelease()` - Finds first prerelease
+- Added `isPrereleaseNewer()` - Compares release dates
+- Added `prerelease` and `draft` fields to GitHubRelease interface
+
+**Enhanced Downloads Page:**
+
+- Completely rewritten as client component with state management
+- Release selector with stable/prerelease badges (green/yellow)
+- Toggle for "Include pre-releases" with persistence
+- Clear warning messages for pre-release versions
+- Info messages when older pre-releases exist
+- URL parameter support for sharing pre-release links
+
+**Health Monitoring Features:**
+
+- **Status meanings**: ok (all good), degraded (issues detected), down (GitHub unreachable)
+- **Metrics tracked**: GitHub reachability, rate limit remaining, latest stable/prerelease tags, assets validation, checksums presence
+- **Caching**: 60-second server-side cache to prevent excessive API requests
+- **Troubleshooting**: Context-aware guidance based on detected issues
+- **Auto-refresh**: Status page updates every 60 seconds automatically
+
+**Testing Infrastructure:**
+
+- `__tests__/github.test.ts` - 27 comprehensive tests
+- `jest.config.js` - Next.js Jest configuration
+- `jest.setup.js` - Testing environment setup
+- Test coverage: release parsing, asset info, OS/arch display names, stable vs prerelease selection, draft filtering
+
+**Files Added:**
+
+- `site/app/api/health/route.ts` - Health check endpoint
+- `site/app/api/github/releases/route.ts` - Releases API route
+- `site/app/status/page.tsx` - Status dashboard page
+- `site/app/status/status.module.css` - Status page styles
+- `site/components/PrereleaseBanner.tsx` - Pre-release banner component
+- `site/components/PrereleaseBanner.module.css` - Banner styles
+- `site/components/PrereleaseBannerWrapper.tsx` - Server wrapper for banner
+- `site/__tests__/github.test.ts` - Test suite
+- `site/jest.config.js` - Jest configuration
+- `site/jest.setup.js` - Jest setup
+
+**Files Modified:**
+
+- `site/lib/github.ts` - Added stable/prerelease helper functions
+- `site/app/download/page.tsx` - Complete rewrite with prerelease toggle
+- `site/app/download/download.module.css` - Added release selector, badge, toggle, warning styles
+- `site/components/Footer.tsx` - Added status link with pulsing indicator
+- `site/components/Footer.module.css` - Added status link and pulse animation
+- `site/app/layout.tsx` - Added PrereleaseBannerWrapper
+- `site/package.json` - Added test scripts and dependencies (@testing-library/jest-dom, jest, etc.)
+- `site/README.md` - Extensive documentation updates (Enterprise Features, Operations, Testing)
+
+**Enterprise Features Documentation:**
+
+- Stable vs Pre-Release Selection behavior
+- Operational Health Monitoring details
+- Auto-Update Strategy (ISR + Deploy Hooks)
+- Pre-Release Banner functionality
+- Testing instructions and coverage
+- Operations guide (monitoring, common tasks)
+- Environment variables reference table
+
+**Pre-Release Support:**
+
+- **Default behavior**: Always shows latest stable release (prerelease=false, draft=false)
+- **Opt-in prereleases**: User enables "Include pre-releases" toggle
+- **Date comparison**: Only shows prerelease if it's newer than stable
+- **Clear labeling**: STABLE (green) vs PRE-RELEASE (yellow) badges
+- **Warnings**: "⚠️ This is a pre-release version. Not recommended for production use."
+- **Persistence**: Choice saved to localStorage + URL param support
+- **Banner**: Site-wide dismissible banner when prerelease is newer than stable
+
+**Operational Monitoring:**
+
+- **Health endpoint**: `/api/health` with ok/degraded/down status
+- **Status dashboard**: `/status` page with real-time metrics
+- **Rate limit tracking**: Shows remaining GitHub API requests
+- **Asset validation**: Verifies binaries and checksums exist
+- **Troubleshooting**: Context-aware guidance for issues
+- **Footer indicator**: Pulsing green dot linking to status page
+
+**Auto-Update Strategy (Belt + Suspenders):**
+
+1. **ISR (Baseline)**: 60-second revalidation guarantees updates within 1 minute
+2. **Deploy Hook (Immediate)**: GitHub Actions triggers Vercel on release:published
+3. **Redundancy**: ISR ensures updates even if deploy hook fails
+
+**Test Coverage:**
+
+- Release parsing logic (stable vs prerelease filtering)
+- Asset information parsing (OS/arch detection from filenames)
+- Display name mapping (linux→Linux, darwin→macOS, amd64→x64)
+- Pre-release selection logic (date comparison, toggle behavior)
+- Draft release exclusion
+- Integration scenarios (stable default, prerelease opt-in, draft filtering)
+
+**Impact:**
+
+- **Production-ready monitoring** - Health checks enable uptime tracking and alerting
+- **Enterprise release management** - Stable-by-default with opt-in prerelease access
+- **Developer experience** - Clear warnings and status indicators prevent confusion
+- **Operational transparency** - Status page provides visibility into system health
+- **Faster updates** - 60s ISR interval reduces delay for new releases
+- **Comprehensive testing** - 27 tests ensure release logic correctness
+
+**Release Focus:**
+
+This release enhances the **website infrastructure** to enterprise-grade standards:
+- ✅ Operational health monitoring with status dashboard
+- ✅ Stable-by-default release selection with prerelease support
+- ✅ Faster auto-updates (60s ISR interval)
+- ✅ Comprehensive test coverage (27 tests)
+- ✅ Clear user warnings and status indicators
+- ✅ Production-ready operational features
+
+**No Product Changes:** This release contains NO changes to acc product behavior, CLI semantics, JSON schemas, or exit codes. All changes are website infrastructure and operational features.
+
+**No CLI Test Changes:** This release contains NO changes to CLI test scripts or CI workflows for the acc tool. Website tests are isolated under `site/__tests__/`.
+
 ## [0.2.5] - 2025-12-20
 
 ### Fixed - Documentation Accuracy

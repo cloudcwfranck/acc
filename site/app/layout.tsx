@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import Navigation from '@/components/Navigation';
 import Footer from '@/components/Footer';
+import PrereleaseBannerWrapper from '@/components/PrereleaseBannerWrapper';
 
 export const metadata: Metadata = {
   title: 'acc - Policy Verification CLI',
@@ -23,6 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <PrereleaseBannerWrapper />
         <Navigation />
         <main>{children}</main>
         <Footer />

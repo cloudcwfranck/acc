@@ -1,37 +1,131 @@
-import { getLatestRelease, getChecksums, parseAssetInfo, getOSDisplayName, getArchDisplayName } from '@/lib/github';
+'use client';
+
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import styles from './download.module.css';
 
-export const metadata = {
-  title: 'Download acc - Latest Release',
-  description: 'Download the latest version of acc for your platform',
-};
+interface Release {
+  tag_name: string;
+  name: string;
+  published_at: string;
+  prerelease: boolean;
+  draft: boolean;
+  html_url: string;
+  assets: Asset[];
+}
 
-export default async function DownloadPage() {
-  const release = await getLatestRelease();
+interface Asset {
+  name: string;
+  browser_download_url: string;
+  size: number;
+}
 
-  if (!release) {
+function DownloadContent() {
+  const searchParams = useSearchParams();
+  const [stableRelease, setStableRelease] = useState<Release | null>(null);
+  const [prereleaseRelease, setPrereleaseRelease] = useState<Release | null>(null);
+  const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
+  const [showPrerelease, setShowPrerelease] = useState(false);
+  const [checksums, setChecksums] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Check URL param or localStorage for prerelease preference
+    const urlPrerelease = searchParams?.get('prerelease') === '1';
+    const storedPrerelease = localStorage.getItem('show-prereleases') === 'true';
+    const initialPrerelease = urlPrerelease || storedPrerelease;
+    setShowPrerelease(initialPrerelease);
+
+    fetchReleases(initialPrerelease);
+  }, [searchParams]);
+
+  const fetchReleases = async (includePrereleases: boolean) => {
+    try {
+      const response = await fetch('/api/github/releases?limit=20');
+      const releases = await response.json();
+
+      const stable = releases.find((r: Release) => !r.prerelease && !r.draft);
+      const prerelease = releases.find((r: Release) => r.prerelease && !r.draft);
+
+      setStableRelease(stable || null);
+      setPrereleaseRelease(prerelease || null);
+
+      // Determine which release to show
+      let selected = stable;
+      if (includePrereleases && prerelease) {
+        // Show prerelease if it's newer than stable
+        const prereleaseDate = new Date(prerelease.published_at);
+        const stableDate = stable ? new Date(stable.published_at) : new Date(0);
+        if (prereleaseDate > stableDate) {
+          selected = prerelease;
+        }
+      }
+
+      setSelectedRelease(selected);
+
+      // Fetch checksums for selected release
+      if (selected) {
+        const checksumsAsset = selected.assets.find((a: Asset) => a.name === 'checksums.txt');
+        if (checksumsAsset) {
+          const checksumsResponse = await fetch(checksumsAsset.browser_download_url);
+          const checksumsText = await checksumsResponse.text();
+          setChecksums(checksumsText);
+        }
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Failed to fetch releases:', error);
+      setLoading(false);
+    }
+  };
+
+  const togglePrerelease = () => {
+    const newValue = !showPrerelease;
+    setShowPrerelease(newValue);
+    localStorage.setItem('show-prereleases', newValue.toString());
+    fetchReleases(newValue);
+  };
+
+  if (loading) {
     return (
       <div className="container">
         <h1>Download acc</h1>
-        <p>Unable to fetch release information. Please visit the <a href="https://github.com/cloudcwfranck/acc/releases">GitHub Releases page</a>.</p>
+        <p>Loading release information...</p>
       </div>
     );
   }
 
-  const checksums = await getChecksums(release);
-  const publishedDate = new Date(release.published_at).toLocaleDateString('en-US', {
+  if (!selectedRelease) {
+    return (
+      <div className="container">
+        <h1>Download acc</h1>
+        <p>
+          No releases available. Visit the{' '}
+          <a href="https://github.com/cloudcwfranck/acc/releases">GitHub Releases page</a>.
+        </p>
+      </div>
+    );
+  }
+
+  const publishedDate = new Date(selectedRelease.published_at).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
 
-  // Group assets by OS and arch
-  const binaries = release.assets
+  // Group assets by OS
+  const binaries = selectedRelease.assets
     .map(asset => {
-      const info = parseAssetInfo(asset.name);
-      if (!info) return null;
-      return { ...asset, ...info };
+      const match = asset.name.match(/acc_[\d.]+_(\w+)_(\w+)\.(tar\.gz|zip)/);
+      if (!match) return null;
+      return {
+        ...asset,
+        os: match[1],
+        arch: match[2],
+        format: match[3],
+      };
     })
     .filter(Boolean);
 
@@ -45,25 +139,72 @@ export default async function DownloadPage() {
     }
   });
 
+  const getOSName = (os: string) => {
+    const names: Record<string, string> = {
+      linux: 'Linux',
+      darwin: 'macOS',
+      windows: 'Windows',
+    };
+    return names[os] || os;
+  };
+
+  const getArchName = (arch: string) => {
+    const names: Record<string, string> = {
+      amd64: 'x64',
+      arm64: 'ARM64',
+    };
+    return names[arch] || arch;
+  };
+
   return (
     <div className="container">
       <div className={styles.header}>
         <h1>Download acc</h1>
-        <div className={styles.releaseInfo}>
-          <span className={styles.version}>{release.tag_name}</span>
-          <span className={styles.date}>Released {publishedDate}</span>
+
+        {/* Release selector */}
+        <div className={styles.releaseSelector}>
+          <div className={styles.releaseInfo}>
+            <span className={`${styles.version} ${selectedRelease.prerelease ? styles.prerelease : styles.stable}`}>
+              {selectedRelease.tag_name}
+              {selectedRelease.prerelease && <span className={styles.badge}>PRE-RELEASE</span>}
+              {!selectedRelease.prerelease && <span className={styles.badge}>STABLE</span>}
+            </span>
+            <span className={styles.date}>Released {publishedDate}</span>
+          </div>
+
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={showPrerelease}
+              onChange={togglePrerelease}
+            />
+            <span>Include pre-releases</span>
+          </label>
         </div>
+
+        {selectedRelease.prerelease && (
+          <div className={styles.warning}>
+            ⚠️ This is a pre-release version. Not recommended for production use.
+          </div>
+        )}
+
+        {!selectedRelease.prerelease && prereleaseRelease && showPrerelease && (
+          <div className={styles.info}>
+            ℹ️ A pre-release ({prereleaseRelease.tag_name}) is available but older than the stable release.
+          </div>
+        )}
+
         <p className={styles.description}>
           Policy verification CLI for deterministic, explainable results
         </p>
       </div>
 
-      {/* Download Buttons */}
+      {/* Download buttons */}
       <section className={styles.downloads}>
         <h2>Download Binaries</h2>
         {Object.entries(osGroups).map(([os, assets]) => (
           <div key={os} className={styles.osGroup}>
-            <h3>{getOSDisplayName(os)}</h3>
+            <h3>{getOSName(os)}</h3>
             <div className={styles.assetButtons}>
               {assets.map((asset: any) => (
                 <a
@@ -72,11 +213,9 @@ export default async function DownloadPage() {
                   className={styles.downloadBtn}
                   download
                 >
-                  <span className={styles.arch}>{getArchDisplayName(asset.arch)}</span>
+                  <span className={styles.arch}>{getArchName(asset.arch)}</span>
                   <span className={styles.format}>.{asset.format}</span>
-                  <span className={styles.size}>
-                    {(asset.size / 1024 / 1024).toFixed(1)} MB
-                  </span>
+                  <span className={styles.size}>{(asset.size / 1024 / 1024).toFixed(1)} MB</span>
                 </a>
               ))}
             </div>
@@ -84,19 +223,18 @@ export default async function DownloadPage() {
         ))}
       </section>
 
-      {/* Installation Instructions */}
+      {/* Installation instructions */}
       <section className={styles.section}>
         <h2>Quick Install</h2>
-
         <div className={styles.instructions}>
           <h3>Linux / macOS</h3>
           <pre>
-{`# Download for your platform
-VERSION="${release.tag_name.replace('v', '')}"
+            {`# Download for your platform
+VERSION="${selectedRelease.tag_name.replace('v', '')}"
 OS="linux"    # or darwin
 ARCH="amd64"  # or arm64
 
-curl -LO "https://github.com/cloudcwfranck/acc/releases/download/${release.tag_name}/acc_\${VERSION}_\${OS}_\${ARCH}.tar.gz"
+curl -LO "https://github.com/cloudcwfranck/acc/releases/download/${selectedRelease.tag_name}/acc_\${VERSION}_\${OS}_\${ARCH}.tar.gz"
 
 # Extract and install
 tar -xzf "acc_\${VERSION}_\${OS}_\${ARCH}.tar.gz"
@@ -107,30 +245,10 @@ chmod +x /usr/local/bin/acc
 acc version`}
           </pre>
         </div>
-
-        <div className={styles.instructions}>
-          <h3>Windows (PowerShell)</h3>
-          <pre>
-{`# Download
-$VERSION = "${release.tag_name.replace('v', '')}"
-Invoke-WebRequest -Uri "https://github.com/cloudcwfranck/acc/releases/download/${release.tag_name}/acc_\${VERSION}_windows_amd64.zip" -OutFile "acc.zip"
-
-# Extract
-Expand-Archive -Path "acc.zip" -DestinationPath .
-
-# Run
-.\\acc.exe version`}
-          </pre>
-        </div>
-
-        <div className={styles.instructions}>
-          <h3>Using acc upgrade (if you have a previous version)</h3>
-          <pre>{`acc upgrade --version ${release.tag_name}`}</pre>
-        </div>
       </section>
 
       {/* Checksums */}
-      {checksums && (
+      {checksums ? (
         <section className={styles.section}>
           <h2>Verify Downloads (SHA256)</h2>
           <p style={{ marginBottom: '1rem', color: 'rgba(var(--foreground-rgb), 0.7)' }}>
@@ -140,7 +258,7 @@ Expand-Archive -Path "acc.zip" -DestinationPath .
           <div className={styles.verifySnippet}>
             <h3>Verification command:</h3>
             <pre>
-{`# Linux
+              {`# Linux
 sha256sum -c checksums.txt --ignore-missing
 
 # macOS
@@ -148,15 +266,35 @@ shasum -a 256 -c checksums.txt --ignore-missing`}
             </pre>
           </div>
         </section>
+      ) : (
+        <section className={styles.section}>
+          <h2>Checksums</h2>
+          <div className={styles.warning}>
+            ⚠️ Checksums not published for this release. Download verification unavailable.
+          </div>
+        </section>
       )}
 
-      {/* Release Notes */}
+      {/* Release notes */}
       <section className={styles.section}>
         <h2>Release Notes</h2>
-        <a href={release.html_url} target="_blank" rel="noopener noreferrer" className={styles.releaseLink}>
+        <a
+          href={selectedRelease.html_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles.releaseLink}
+        >
           View full release notes on GitHub →
         </a>
       </section>
     </div>
+  );
+}
+
+export default function DownloadPage() {
+  return (
+    <Suspense fallback={<div className="container"><p>Loading...</p></div>}>
+      <DownloadContent />
+    </Suspense>
   );
 }
