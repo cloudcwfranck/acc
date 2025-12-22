@@ -1,15 +1,32 @@
 /**
  * GitHub API helpers for fetching acc releases
- * Uses unauthenticated requests to avoid token management
- * Rate limit: 60 requests/hour per IP (unauthenticated)
+ * Supports optional server-side GITHUB_TOKEN for higher rate limits
+ * Rate limit: 60 requests/hour (unauthenticated) or 5000/hour (authenticated)
  */
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const REPO_OWNER = 'cloudcwfranck';
 const REPO_NAME = 'acc';
 
-// ISR revalidation interval (seconds)
-export const REVALIDATE_INTERVAL = 300; // 5 minutes
+// ISR revalidation interval (seconds) - 60s for faster updates
+export const REVALIDATE_INTERVAL = 60;
+
+/**
+ * Get authorization headers (server-side only)
+ * Uses optional GITHUB_TOKEN env var for higher rate limits
+ */
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github.v3+json',
+  };
+
+  // Server-side only: use GITHUB_TOKEN if available
+  if (typeof process !== 'undefined' && process.env.GITHUB_TOKEN) {
+    headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
+  }
+
+  return headers;
+}
 
 export interface GitHubRelease {
   id: number;
@@ -77,9 +94,7 @@ export async function getLatestRelease(): Promise<GitHubRelease | null> {
       `${GITHUB_API_BASE}/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
       {
         next: { revalidate: REVALIDATE_INTERVAL },
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-        },
+        headers: getAuthHeaders(),
       }
     );
 
@@ -104,9 +119,7 @@ export async function getReleases(limit: number = 10): Promise<GitHubRelease[]> 
       `${GITHUB_API_BASE}/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=${limit}`,
       {
         next: { revalidate: REVALIDATE_INTERVAL },
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-        },
+        headers: getAuthHeaders(),
       }
     );
 
