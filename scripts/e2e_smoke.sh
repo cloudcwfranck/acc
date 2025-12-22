@@ -155,7 +155,11 @@ assert_json_has_field() {
     local jq_expr="$2"
     local description="$3"
 
-    if echo "$json" | jq -e "$jq_expr" > /dev/null 2>&1; then
+    # Extract field name from jq expression (e.g., ".sbomPresent" -> "sbomPresent")
+    local field_name=$(echo "$jq_expr" | sed 's/^\.//; s/\[.*$//')
+
+    # Use 'has()' to check if field exists (works for false values too)
+    if echo "$json" | jq -e "has(\"$field_name\")" > /dev/null 2>&1; then
         log_success "$description: field $jq_expr exists"
         return 0
     else
