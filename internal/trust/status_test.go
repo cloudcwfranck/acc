@@ -79,6 +79,26 @@ func TestStatusUnknown(t *testing.T) {
 	if result.SBOMPresent {
 		t.Errorf("SBOMPresent = %v, want false", result.SBOMPresent)
 	}
+
+	// Regression test: Verify all required fields for JSON contract stability
+	jsonData := result.FormatJSON()
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonData), &parsed); err != nil {
+		t.Errorf("Failed to parse JSON: %v", err)
+	}
+
+	// Verify all required fields exist (even for unknown status)
+	requiredFields := []string{"schemaVersion", "imageRef", "status", "sbomPresent", "violations", "warnings", "attestations", "timestamp"}
+	for _, field := range requiredFields {
+		if _, ok := parsed[field]; !ok {
+			t.Errorf("JSON missing required field for unknown status: %s", field)
+		}
+	}
+
+	// Verify sbomPresent is explicitly false (not null/missing)
+	if sbom, ok := parsed["sbomPresent"].(bool); !ok || sbom {
+		t.Errorf("sbomPresent should be false for unknown status, got %v", parsed["sbomPresent"])
+	}
 }
 
 // TestStatusWithVerifyState tests that Status correctly reads verify state

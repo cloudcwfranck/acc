@@ -37,6 +37,15 @@ func Explain(outputJSON bool) error {
 	}
 
 	if outputJSON {
+		// Ensure .result.input exists for contract stability
+		if state.Result != nil {
+			// Check if input field exists
+			if _, hasInput := state.Result["input"]; !hasInput {
+				// Add empty input object if missing
+				state.Result["input"] = map[string]interface{}{}
+			}
+		}
+
 		// Output raw state as JSON
 		formatted, _ := json.MarshalIndent(state, "", "  ")
 		fmt.Println(string(formatted))
