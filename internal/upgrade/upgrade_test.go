@@ -826,7 +826,7 @@ func TestVerifyProvenanceNonGitHubBuilder(t *testing.T) {
 func TestUpgradeWithBothVerifications(t *testing.T) {
 	// This test would require mocking cosign binary execution
 	// For now, we test the integration points are wired correctly
-	
+
 	// Verify that UpgradeOptions accepts both flags
 	opts := &UpgradeOptions{
 		VerifySignature:  true,

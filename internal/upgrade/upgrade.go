@@ -37,14 +37,14 @@ type UpgradeOptions struct {
 
 // UpgradeResult contains the result of an upgrade operation
 type UpgradeResult struct {
-	CurrentVersion    string `json:"currentVersion"`
-	TargetVersion     string `json:"targetVersion"`
-	Updated           bool   `json:"updated"`
-	Message           string `json:"message"`
-	AssetName         string `json:"assetName,omitempty"`
-	Checksum          string `json:"checksum,omitempty"`
-	InstallPath       string `json:"installPath,omitempty"`
-	SignatureVerified bool   `json:"signatureVerified,omitempty"`
+	CurrentVersion     string `json:"currentVersion"`
+	TargetVersion      string `json:"targetVersion"`
+	Updated            bool   `json:"updated"`
+	Message            string `json:"message"`
+	AssetName          string `json:"assetName,omitempty"`
+	Checksum           string `json:"checksum,omitempty"`
+	InstallPath        string `json:"installPath,omitempty"`
+	SignatureVerified  bool   `json:"signatureVerified,omitempty"`
 	ProvenanceVerified bool   `json:"provenanceVerified,omitempty"`
 }
 
