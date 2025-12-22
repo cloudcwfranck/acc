@@ -585,8 +585,11 @@ func NewVersionCmd() *cobra.Command {
 
 func NewUpgradeCmd() *cobra.Command {
 	var (
-		targetVersion string
-		dryRun        bool
+		targetVersion    string
+		dryRun           bool
+		verifySignature  bool
+		cosignKey        string
+		verifyProvenance bool
 	)
 
 	cmd := &cobra.Command{
@@ -600,13 +603,25 @@ func NewUpgradeCmd() *cobra.Command {
   acc upgrade --version v0.1.6
 
   # Show what would happen without installing
-  acc upgrade --dry-run`,
+  acc upgrade --dry-run
+
+  # Upgrade with cosign signature verification
+  acc upgrade --verify-signature --cosign-key <path-to-key>
+
+  # Upgrade with SLSA provenance verification
+  acc upgrade --verify-provenance
+
+  # Upgrade with both verifications (enterprise mode)
+  acc upgrade --verify-signature --verify-provenance`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Get upgrade package
 			opts := &upgrade.UpgradeOptions{
-				Version:        targetVersion,
-				DryRun:         dryRun,
-				CurrentVersion: version,
+				Version:          targetVersion,
+				DryRun:           dryRun,
+				CurrentVersion:   version,
+				VerifySignature:  verifySignature,
+				CosignKey:        cosignKey,
+				VerifyProvenance: verifyProvenance,
 				// Read env vars for testing overrides
 				APIBase:        os.Getenv("ACC_UPGRADE_API_BASE"),
 				DownloadBase:   os.Getenv("ACC_UPGRADE_DOWNLOAD_BASE"),
@@ -636,6 +651,12 @@ func NewUpgradeCmd() *cobra.Command {
 					if result.Checksum != "" {
 						fmt.Printf("Checksum:        %s\n", result.Checksum[:16]+"...")
 					}
+					if result.SignatureVerified {
+						fmt.Printf("Signature:       ✓ Verified\n")
+					}
+					if result.ProvenanceVerified {
+						fmt.Printf("Provenance:      ✓ Verified\n")
+					}
 					if result.InstallPath != "" {
 						fmt.Printf("Installed to:    %s\n", result.InstallPath)
 					}
@@ -647,6 +668,11 @@ func NewUpgradeCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&targetVersion, "version", "", "target version to install (default: latest)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would happen without downloading/installing")
+
+	// Supply-chain verification flags (opt-in)
+	cmd.Flags().BoolVar(&verifySignature, "verify-signature", false, "verify cosign signature (requires cosign in PATH)")
+	cmd.Flags().StringVar(&cosignKey, "cosign-key", "", "path/URL to cosign public key (optional, uses keyless if not provided)")
+	cmd.Flags().BoolVar(&verifyProvenance, "verify-provenance", false, "verify SLSA provenance")
 
 	return cmd
 }

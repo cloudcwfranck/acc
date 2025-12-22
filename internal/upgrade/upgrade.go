@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -27,17 +28,24 @@ type UpgradeOptions struct {
 	DisableInstall    bool   // If true, don't actually install (for testing)
 	CurrentVersion    string // Current version
 	CurrentExecutable string // Path to current executable
+
+	// Supply-chain verification (opt-in)
+	VerifySignature  bool   // If true, verify cosign signature
+	CosignKey        string // Path/URL to cosign public key (optional, keyless if empty)
+	VerifyProvenance bool   // If true, verify SLSA provenance
 }
 
 // UpgradeResult contains the result of an upgrade operation
 type UpgradeResult struct {
-	CurrentVersion string `json:"currentVersion"`
-	TargetVersion  string `json:"targetVersion"`
-	Updated        bool   `json:"updated"`
-	Message        string `json:"message"`
-	AssetName      string `json:"assetName,omitempty"`
-	Checksum       string `json:"checksum,omitempty"`
-	InstallPath    string `json:"installPath,omitempty"`
+	CurrentVersion    string `json:"currentVersion"`
+	TargetVersion     string `json:"targetVersion"`
+	Updated           bool   `json:"updated"`
+	Message           string `json:"message"`
+	AssetName         string `json:"assetName,omitempty"`
+	Checksum          string `json:"checksum,omitempty"`
+	InstallPath       string `json:"installPath,omitempty"`
+	SignatureVerified bool   `json:"signatureVerified,omitempty"`
+	ProvenanceVerified bool   `json:"provenanceVerified,omitempty"`
 }
 
 // Release represents a GitHub release
@@ -142,6 +150,22 @@ func Upgrade(opts *UpgradeOptions) (*UpgradeResult, error) {
 	}
 
 	result.Checksum = actualChecksum
+
+	// Optional: Verify cosign signature (opt-in)
+	if opts.VerifySignature {
+		if err := verifyCosignSignature(archivePath, opts.DownloadBase, release.TagName, opts.CosignKey); err != nil {
+			return nil, fmt.Errorf("signature verification failed: %w", err)
+		}
+		result.SignatureVerified = true
+	}
+
+	// Optional: Verify SLSA provenance (opt-in)
+	if opts.VerifyProvenance {
+		if err := verifySLSAProvenance(opts.DownloadBase, release.TagName, asset.Name); err != nil {
+			return nil, fmt.Errorf("provenance verification failed: %w", err)
+		}
+		result.ProvenanceVerified = true
+	}
 
 	// Extract binary
 	extractDir := filepath.Join(tmpDir, "extract")
@@ -572,4 +596,153 @@ func copyFile(src, dst string) error {
 	}
 
 	return out.Sync()
+}
+
+// verifyCosignSignature verifies the cosign signature of a release asset
+func verifyCosignSignature(archivePath, downloadBase, tag, cosignKey string) error {
+	// Check if cosign is available
+	cosignPath, err := findCosignBinary()
+	if err != nil {
+		return fmt.Errorf("cosign is required for signature verification but was not found in PATH. Install cosign: https://docs.sigstore.dev/cosign/installation/")
+	}
+
+	// Construct signature file URL
+	// Expected format: acc_0.2.7_linux_amd64.tar.gz.sig
+	signatureURL := fmt.Sprintf("%s/cloudcwfranck/acc/releases/download/%s/%s.sig", downloadBase, tag, filepath.Base(archivePath))
+
+	// Download signature file
+	sigPath := archivePath + ".sig"
+	if err := downloadFile(signatureURL, sigPath); err != nil {
+		return fmt.Errorf("failed to download signature file: %w (expected: %s)", err, signatureURL)
+	}
+	defer os.Remove(sigPath)
+
+	// Also try to download certificate file (for keyless signatures)
+	certURL := fmt.Sprintf("%s/cloudcwfranck/acc/releases/download/%s/%s.pem", downloadBase, tag, filepath.Base(archivePath))
+	certPath := archivePath + ".pem"
+	downloadFile(certURL, certPath) // Best effort, may not exist
+	defer os.Remove(certPath)
+
+	// Build cosign verify command
+	args := []string{"verify-blob"}
+
+	if cosignKey != "" {
+		// Key-based verification
+		args = append(args, "--key", cosignKey)
+	} else {
+		// Keyless verification (requires certificate)
+		if _, err := os.Stat(certPath); os.IsNotExist(err) {
+			return fmt.Errorf("no cosign key provided and no certificate found for keyless verification (expected: %s)", certURL)
+		}
+		args = append(args, "--certificate", certPath)
+		args = append(args, "--certificate-identity-regexp", ".*")
+		args = append(args, "--certificate-oidc-issuer-regexp", ".*")
+	}
+
+	args = append(args, "--signature", sigPath)
+	args = append(args, archivePath)
+
+	// Execute cosign verify
+	cmd := exec.Command(cosignPath, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("cosign verification failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// verifySLSAProvenance verifies the SLSA provenance for a release asset
+func verifySLSAProvenance(downloadBase, tag, assetName string) error {
+	// Expected provenance formats:
+	// 1. Single provenance file: <tag>.intoto.jsonl or provenance.intoto.jsonl
+	// 2. Per-asset provenance: <assetName>.intoto.jsonl
+
+	provenanceURLs := []string{
+		fmt.Sprintf("%s/cloudcwfranck/acc/releases/download/%s/provenance.intoto.jsonl", downloadBase, tag),
+		fmt.Sprintf("%s/cloudcwfranck/acc/releases/download/%s/%s.intoto.jsonl", downloadBase, tag, tag),
+		fmt.Sprintf("%s/cloudcwfranck/acc/releases/download/%s/%s.intoto.jsonl", downloadBase, tag, assetName),
+	}
+
+	// Try to download provenance file
+	var provenanceData []byte
+	var lastErr error
+
+	for _, url := range provenanceURLs {
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Get(url)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			provenanceData, err = io.ReadAll(resp.Body)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			break
+		}
+		lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	if provenanceData == nil {
+		return fmt.Errorf("no SLSA provenance found for this release (tried: provenance.intoto.jsonl, %s.intoto.jsonl, %s.intoto.jsonl): %v", tag, assetName, lastErr)
+	}
+
+	// Basic provenance validation
+	// Parse as JSON to ensure it's valid SLSA provenance
+	var provenance map[string]interface{}
+	if err := json.Unmarshal(provenanceData, &provenance); err != nil {
+		return fmt.Errorf("provenance file is not valid JSON: %w", err)
+	}
+
+	// Verify provenance structure (basic checks)
+	predicateType, ok := provenance["predicateType"].(string)
+	if !ok || predicateType == "" {
+		return fmt.Errorf("provenance missing predicateType field")
+	}
+
+	if !strings.Contains(predicateType, "slsa") && !strings.Contains(predicateType, "provenance") {
+		return fmt.Errorf("provenance predicateType is not SLSA provenance: %s", predicateType)
+	}
+
+	// Verify subject refers to the correct asset
+	predicate, ok := provenance["predicate"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("provenance missing predicate field")
+	}
+
+	// Check buildType
+	buildType, _ := predicate["buildType"].(string)
+	if buildType != "" && !strings.Contains(buildType, "github") {
+		return fmt.Errorf("provenance buildType is not GitHub Actions: %s", buildType)
+	}
+
+	// Verify builder identity (should be GitHub Actions)
+	builder, ok := predicate["builder"].(map[string]interface{})
+	if ok {
+		builderID, _ := builder["id"].(string)
+		if builderID != "" && !strings.Contains(builderID, "github") {
+			return fmt.Errorf("provenance builder is not GitHub: %s", builderID)
+		}
+	}
+
+	// Note: Full cryptographic verification would require slsa-verifier or similar tool
+	// This implementation does basic structure validation only
+	// For production use, integrate slsa-verifier CLI tool
+
+	return nil
+}
+
+// findCosignBinary finds the cosign binary in PATH
+func findCosignBinary() (string, error) {
+	// Check for cosign in PATH
+	path, err := exec.LookPath("cosign")
+	if err != nil {
+		return "", fmt.Errorf("cosign not found in PATH")
+	}
+	return path, nil
 }

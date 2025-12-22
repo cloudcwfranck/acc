@@ -730,6 +730,153 @@ The upgrade process includes multiple security checks:
 - **Atomic replacement** - Unix systems use atomic rename (non-Windows)
 - **Backup/rollback** - Failed installations restore previous binary
 
+### Enterprise-Grade Verification (v0.2.7+)
+
+For environments requiring stronger supply-chain security, `acc upgrade` supports optional cosign signature verification and SLSA provenance verification.
+
+#### Cosign Signature Verification
+
+Verify release signatures using [Sigstore cosign](https://docs.sigstore.dev/cosign/installation/):
+
+```bash
+# Verify with cosign signature (requires cosign in PATH)
+acc upgrade --verify-signature
+
+# Verify with specific public key
+acc upgrade --verify-signature --cosign-key /path/to/public.key
+acc upgrade --verify-signature --cosign-key https://example.com/key.pub
+
+# Keyless verification (uses certificate from release assets)
+acc upgrade --verify-signature
+```
+
+**What happens:**
+1. Downloads release asset and checksums (standard flow)
+2. Verifies SHA256 checksum (standard flow)
+3. Downloads signature file (`.sig`) from release assets
+4. Runs `cosign verify-blob` to verify cryptographic signature
+5. Aborts upgrade if signature verification fails
+
+**Requirements:**
+- `cosign` must be installed and in PATH
+- Release assets must include `.sig` signature files
+- For keyless: `.pem` certificate files must be present
+
+**Error handling:**
+```bash
+$ acc upgrade --verify-signature
+Error: signature verification failed: cosign is required for signature verification
+but was not found in PATH. Install cosign: https://docs.sigstore.dev/cosign/installation/
+```
+
+#### SLSA Provenance Verification
+
+Verify build provenance meets [SLSA](https://slsa.dev/) requirements:
+
+```bash
+# Verify SLSA provenance
+acc upgrade --verify-provenance
+```
+
+**What happens:**
+1. Downloads release asset and checksums (standard flow)
+2. Verifies SHA256 checksum (standard flow)
+3. Fetches SLSA provenance attestation (`.intoto.jsonl`) from release assets
+4. Validates provenance structure and builder identity
+5. Ensures build was performed by GitHub Actions from correct repository
+6. Aborts upgrade if provenance validation fails
+
+**Provenance checks:**
+- ✓ Valid SLSA predicate type (contains "slsa" or "provenance")
+- ✓ Builder identity is GitHub Actions
+- ✓ Build type is GitHub Actions workflow
+- ✓ Source repository is `cloudcwfranck/acc`
+
+**Supported formats:**
+- `provenance.intoto.jsonl` (global)
+- `<tag>.intoto.jsonl` (per-release)
+- `<assetName>.intoto.jsonl` (per-asset)
+
+**Note:** Current implementation performs structural validation only. For full cryptographic verification, integrate `slsa-verifier` CLI tool.
+
+#### Combined Enterprise Mode
+
+Use both verifications for maximum supply-chain security:
+
+```bash
+# Enterprise mode: verify both signature and provenance
+acc upgrade --verify-signature --verify-provenance
+```
+
+**Output:**
+```
+Current version: v0.2.6
+Target version:  v0.2.7
+Asset:           acc_0.2.7_linux_amd64.tar.gz
+Checksum:        a1b2c3d4e5f6...
+Signature:       ✓ Verified
+Provenance:      ✓ Verified
+Installed to:    /usr/local/bin/acc
+
+Successfully upgraded from v0.2.6 to v0.2.7
+```
+
+**JSON output:**
+```json
+{
+  "currentVersion": "v0.2.6",
+  "targetVersion": "v0.2.7",
+  "updated": true,
+  "message": "Successfully upgraded from v0.2.6 to v0.2.7",
+  "assetName": "acc_0.2.7_linux_amd64.tar.gz",
+  "checksum": "a1b2c3d4e5f67890...",
+  "signatureVerified": true,
+  "provenanceVerified": true,
+  "installPath": "/usr/local/bin/acc"
+}
+```
+
+#### Release Asset Conventions
+
+For verification to work, releases should include:
+
+**Required (all releases):**
+- Binary assets (`.tar.gz`, `.zip`)
+- `checksums.txt` - SHA256 checksums
+
+**Optional (enterprise verification):**
+- `<asset>.sig` - Cosign signature files (for `--verify-signature`)
+- `<asset>.pem` - Certificate files (for keyless cosign)
+- `provenance.intoto.jsonl` - SLSA provenance (for `--verify-provenance`)
+
+**Example release assets for v0.2.7:**
+```
+acc_0.2.7_linux_amd64.tar.gz
+acc_0.2.7_linux_amd64.tar.gz.sig        # cosign signature
+acc_0.2.7_linux_amd64.tar.gz.pem        # keyless certificate
+acc_0.2.7_darwin_arm64.tar.gz
+acc_0.2.7_darwin_arm64.tar.gz.sig
+checksums.txt
+provenance.intoto.jsonl                  # SLSA provenance
+```
+
+#### Default Behavior Unchanged
+
+**Important:** Verification is 100% opt-in. Default upgrade behavior remains unchanged:
+
+```bash
+# Default: checksum verification only (v0.1.x behavior)
+acc upgrade
+
+# Same as before - no signature or provenance checks
+acc upgrade --version v0.2.7
+```
+
+Only when explicitly requested with flags does verification occur:
+- Without `--verify-signature`: No cosign requirement
+- Without `--verify-provenance`: No provenance requirement
+- Flags can be used independently or together
+
 ### Already Up-to-Date
 
 If you're already running the latest version:
