@@ -342,9 +342,9 @@ func TestGetString(t *testing.T) {
 		expected string
 	}{
 		{"stringVal", "hello"},
-		{"intVal", ""},      // Not a string
-		{"boolVal", ""},     // Not a string
-		{"missing", ""},     // Missing key
+		{"intVal", ""},  // Not a string
+		{"boolVal", ""}, // Not a string
+		{"missing", ""}, // Missing key
 	}
 
 	for _, tt := range tests {
