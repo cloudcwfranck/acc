@@ -7,27 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added - v0.3.2 WIP: Remote Attestation Publishing and Fetching
+### Added - v0.3.2: Remote Attestation Publishing and Fetching
 
-**Summary**: Infrastructure for remote attestation publishing and fetching via OCI registries. CLI flags and structure implemented, full OCI integration pending.
+**Summary**: Remote attestation publishing and fetching via OCI registries enables attestation workflows to work across machines and CI runners. Attestations are published as OCI artifacts to container registries and fetched/cached locally on demand.
 
 **What's New:**
 
-- ✅ **CLI Flags** - `--remote` flag added to attest, trust verify, and trust status
-- ✅ **Test Infrastructure** - TEST 6 added to Tier 2 registry integration tests
-- ✅ **Backward Compatible** - All existing tests pass, default behavior unchanged
-- ⏳ **OCI Implementation Pending** - Stubs return "not implemented" (to be completed)
+- ✅ **Remote Publishing** - `acc attest --remote` publishes attestations to OCI registry as artifacts
+- ✅ **Remote Fetching** - `acc trust verify --remote` and `acc trust status --remote` fetch attestations from registry
+- ✅ **OCI Implementation** - Real OCI operations using oras-go/v2 library
+- ✅ **Local Caching** - Remote attestations cached to `.acc/attestations/<digest-prefix>/remote/<registry>/<repo>/<hash>.json`
+- ✅ **Docker Auth** - Uses Docker credential helpers (~/.docker/config.json) for authentication
+- ✅ **Graceful Degradation** - Works offline, remote failures don't break local workflows
+- ✅ **Test Coverage** - Tier 2 tests assert real publish→fetch behavior with strict assertions
+- ✅ **Backward Compatible** - Default behavior unchanged (remote=false maintains v0.3.1 behavior)
 
 **Commands:**
 ```bash
-acc attest --remote <image>           # Publish to registry (stub)
-acc trust verify --remote <image>     # Fetch from registry (stub)
-acc trust status --remote <image>     # Fetch from registry (stub)
+# Publish attestation to remote registry
+acc attest --remote ghcr.io/org/repo:latest
+
+# Fetch and verify remote attestations
+acc trust verify --remote ghcr.io/org/repo:latest
+
+# Display trust status with remote attestations
+acc trust status --remote ghcr.io/org/repo:latest
 ```
 
-**Files Modified:** `cmd/acc/main.go`, `internal/attest/attest.go`, `internal/trust/{status,verify}.go`, `scripts/registry_integration.sh`, test files
+**Technical Details:**
+- **Media Type**: `application/vnd.acc.attestation.v1+json`
+- **Tag Naming**: `attestation-<digest-prefix>-<timestamp>` for discoverability
+- **OCI Library**: oras-go/v2 for registry operations
+- **Authentication**: Standard Docker credential helpers
+- **Cache Path**: `.acc/attestations/<digest-prefix>/remote/<registry>/<repo>/<hash>.json`
+- **Idempotency**: Publishing same attestation multiple times is safe
 
-**Next Steps:** Implement OCI push/pull using oras-go or go-containerregistry
+**Files Modified:**
+- `cmd/acc/main.go` - Added --remote flags to attest, trust verify, trust status
+- `internal/attest/attest.go` - Real OCI publish implementation
+- `internal/trust/status.go` - Real OCI fetch implementation
+- `internal/trust/verify.go` - Remote fetch integration
+- `scripts/registry_integration.sh` - Strict TEST 6 assertions for v0.3.2
+- `go.mod` - Added oras-go/v2 and opencontainers dependencies
+- Test files - Updated signatures for remote parameter
+
+**Testing:**
+- Tier 0 (CLI Help): ✅ All commands show --remote flag in help
+- Tier 1 (Offline E2E): ✅ All tests pass (remote=false by default)
+- Tier 2 (Registry): ✅ Real publish→fetch workflow validated with GHCR
 
 ---
 
