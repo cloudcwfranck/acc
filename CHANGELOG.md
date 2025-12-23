@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Interactive Demo CSP
+
+**Summary**: Fixed Content Security Policy blocking asciinema player CDN, enabling the interactive demo to load and play on the website.
+
+**What's Fixed:**
+
+- ✅ **CSP allowlist** - Added `cdn.jsdelivr.net` to `script-src` and `style-src` directives in `site/next.config.js`
+- ✅ **DemoPlayer rendering** - Interactive terminal demo now loads and auto-plays on homepage
+- ✅ **External resources** - asciinema-player library (v3.7.0) now loads from CDN without CSP violations
+
+**Files Modified:**
+
+- `site/next.config.js` - Updated Content-Security-Policy header to allow cdn.jsdelivr.net
+
+---
+
 ### Added - Interactive Demo Infrastructure
 
 **Summary**: New deterministic, reproducible interactive demo using asciinema for showcasing acc's policy verification workflow. Includes validation scripts, CI automation, and web integration.
