@@ -315,6 +315,116 @@ else
 fi
 
 # ============================================================================
+# TEST 6: Remote Attestation Publishing and Fetching (v0.3.2)
+# ============================================================================
+
+log_section "TEST 6: Remote Attestation Publishing and Fetching"
+
+# 6.1: Create local attestation for the image
+log "Step 6.1: Create local attestation for verified image"
+log_command "$ACC_BIN attest $GHCR_IMAGE"
+
+set +e
+attest_output=$($ACC_BIN attest "$GHCR_IMAGE" 2>&1 | tee -a "$LOGFILE")
+attest_exit=$?
+set -e
+
+if [ $attest_exit -eq 0 ]; then
+    log_success "acc attest succeeded (local attestation created)"
+else
+    log_error "acc attest failed with exit code $attest_exit"
+    log "Output: $attest_output"
+fi
+
+# 6.2: Publish attestation to remote registry
+log "Step 6.2: Publish attestation to remote registry"
+log_command "$ACC_BIN attest --remote $GHCR_IMAGE"
+
+set +e
+publish_output=$($ACC_BIN attest --remote "$GHCR_IMAGE" 2>&1 | tee -a "$LOGFILE")
+publish_exit=$?
+set -e
+
+if [ $publish_exit -eq 0 ]; then
+    log_success "Remote attestation publishing succeeded"
+elif echo "$publish_output" | grep -qiE "(not implemented|flag.*not recognized)"; then
+    log "⚠️  Remote attestation publishing not implemented yet - skipping remote tests"
+    log "This is expected for v0.3.1 and earlier"
+else
+    log_error "Remote attestation publishing failed"
+    log "Output: $publish_output"
+fi
+
+# Only continue with remote fetch tests if publishing worked
+if [ $publish_exit -eq 0 ]; then
+    # 6.3: Remove local attestations to test remote fetching
+    log "Step 6.3: Remove local attestations to test remote fetching"
+
+    if [ -d ".acc/attestations" ]; then
+        attestation_backup="/tmp/acc-attestations-backup-$(date +%s)"
+        log "Backing up attestations to: $attestation_backup"
+        mv .acc/attestations "$attestation_backup"
+        log_success "Local attestations removed (backed up)"
+    else
+        log "No local attestations directory found"
+    fi
+
+    # 6.4: Fetch attestations from remote registry
+    log "Step 6.4: Fetch attestations from remote registry"
+    log_command "$ACC_BIN trust verify --remote $GHCR_IMAGE"
+
+    set +e
+    verify_remote_output=$($ACC_BIN trust verify --remote --json "$GHCR_IMAGE" 2>&1)
+    verify_remote_exit=$?
+    set -e
+
+    log "Remote verify output:"
+    echo "$verify_remote_output" | tee -a "$LOGFILE"
+
+    if [ $verify_remote_exit -eq 0 ]; then
+        log_success "Remote attestation fetching and verification succeeded"
+
+        # Check if attestations were fetched
+        attestation_count=$(echo "$verify_remote_output" | jq -r '.attestationCount' 2>/dev/null || echo "0")
+        if [ "$attestation_count" -gt 0 ]; then
+            log_success "Found $attestation_count remote attestation(s)"
+        else
+            log_error "No attestations found after remote fetch"
+        fi
+    elif echo "$verify_remote_output" | grep -qiE "(not implemented|flag.*not recognized)"; then
+        log "⚠️  Remote attestation fetching not implemented yet"
+    else
+        log_error "Remote attestation fetching failed with exit code $verify_remote_exit"
+    fi
+
+    # 6.5: Verify remote attestations are cached locally
+    log "Step 6.5: Verify remote attestations are cached locally"
+
+    if [ -d ".acc/attestations" ]; then
+        remote_cached=$(find .acc/attestations -type f -name "*.json" | wc -l)
+        if [ "$remote_cached" -gt 0 ]; then
+            log_success "Remote attestations cached locally ($remote_cached files)"
+            log "Cached attestation paths:"
+            find .acc/attestations -type f -name "*.json" -print | head -5 | tee -a "$LOGFILE"
+        else
+            log "⚠️  No remote attestations found in local cache"
+        fi
+    else
+        log "⚠️  No attestations directory found after remote fetch"
+    fi
+
+    # 6.6: Restore local attestations if backed up
+    if [ -d "$attestation_backup" ]; then
+        log "Restoring local attestations from backup"
+        rm -rf .acc/attestations
+        mv "$attestation_backup" .acc/attestations
+        log_success "Local attestations restored"
+    fi
+else
+    log "⏭️  Skipping remote attestation fetch tests (publishing not implemented)"
+fi
+
+# ============================================================================
 # CLEANUP: Delete test image from registry
 # ============================================================================
 

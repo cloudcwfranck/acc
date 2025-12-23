@@ -102,7 +102,7 @@ func TestTrustStatusJSONGolden(t *testing.T) {
 			}
 
 			// Get status
-			result, err := Status(tc.imageRef, true)
+			result, err := Status(tc.imageRef, false, true)
 			if err != nil {
 				t.Errorf("Status() error = %v, want nil", err)
 			}

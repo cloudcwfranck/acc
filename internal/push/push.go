@@ -77,7 +77,8 @@ func Push(cfg *config.Config, imageRef string, outputJSON bool) (*PushResult, er
 			ui.PrintTrust("Checking attestation requirement...")
 		}
 
-		attestResult, err := trust.VerifyAttestations(imageRef, outputJSON)
+		// Use local attestations only for enforcement check (remote=false)
+		attestResult, err := trust.VerifyAttestations(imageRef, false, outputJSON)
 		if err != nil || attestResult.VerificationStatus != "verified" {
 			// Attestation enforcement blocks push (same exit code as verification gate)
 			if !outputJSON {

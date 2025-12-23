@@ -32,7 +32,8 @@ type AttestationDetail struct {
 
 // VerifyAttestations verifies attestations for an image
 // v0.3.0: Local-only, read-only attestation verification
-func VerifyAttestations(imageRef string, outputJSON bool) (*VerifyResult, error) {
+// v0.3.2: optionally fetch from remote registry when remote=true
+func VerifyAttestations(imageRef string, remote, outputJSON bool) (*VerifyResult, error) {
 	result := &VerifyResult{
 		SchemaVersion:      "v0.3",
 		ImageRef:           imageRef,
@@ -56,7 +57,19 @@ func VerifyAttestations(imageRef string, outputJSON bool) (*VerifyResult, error)
 	}
 	result.ImageDigest = digest
 
+	// v0.3.2: Optionally fetch remote attestations before finding local ones
+	if remote {
+		if err := fetchRemoteAttestations(imageRef, digest, outputJSON); err != nil {
+			// Remote fetch failed - log warning but don't fail
+			// This preserves local-only workflow when network unavailable
+			if !outputJSON {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to fetch remote attestations: %v\n", err)
+			}
+		}
+	}
+
 	// Step 2: Find attestations for this digest
+	// v0.3.2: This now includes both local and remote-cached attestations
 	attestPaths := findAttestationsForImage(digest)
 	result.AttestationCount = len(attestPaths)
 

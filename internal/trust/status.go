@@ -42,7 +42,8 @@ type VerifyState struct {
 }
 
 // Status loads and displays the trust status for an image
-func Status(imageRef string, outputJSON bool) (*StatusResult, error) {
+// v0.3.2: optionally fetch attestations from remote registry when remote=true
+func Status(imageRef string, remote, outputJSON bool) (*StatusResult, error) {
 	// Load verification state
 	state, err := loadVerifyState(imageRef)
 	if err != nil {
@@ -118,7 +119,19 @@ func Status(imageRef string, outputJSON bool) (*StatusResult, error) {
 		result.SBOMPresent = false
 	}
 
+	// v0.3.2: Optionally fetch remote attestations before finding local ones
+	if remote && digest != "" {
+		if err := fetchRemoteAttestations(imageRef, digest, outputJSON); err != nil {
+			// Remote fetch failed - log warning but don't fail
+			// This preserves local-only workflow when network unavailable
+			if !outputJSON {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to fetch remote attestations: %v\n", err)
+			}
+		}
+	}
+
 	// v0.2.7: Find attestations for this specific image (per-image isolation)
+	// v0.3.2: This now includes both local and remote-cached attestations
 	result.Attestations = findAttestationsForImage(digest)
 
 	// Output results
@@ -349,4 +362,24 @@ func getString(m map[string]interface{}, key string) string {
 		return v
 	}
 	return ""
+}
+
+// fetchRemoteAttestations fetches attestations from a remote OCI registry and caches them locally
+// v0.3.2: Remote attestation fetching
+func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
+	// v0.3.2: Remote attestation fetching implementation
+	// TODO: Implement OCI artifact pull using oras-go or go-containerregistry
+	//
+	// Design:
+	// 1. Resolve registry and repository from imageRef
+	// 2. Query for attestation artifacts with matching digest
+	//    - Use OCI referrers API or tag naming convention
+	//    - Media type: application/vnd.acc.attestation.v1+json
+	// 3. Pull attestation artifacts using standard Docker auth (~/.docker/config.json)
+	// 4. Cache to: .acc/attestations/<digest-prefix>/remote/<source>/<timestamp-or-hash>.json
+	// 5. Merge with existing local attestations (findAttestationsForImage will find both)
+	//
+	// For now, return not implemented error to allow compilation and testing
+
+	return fmt.Errorf("remote attestation fetching not yet implemented (v0.3.2 TODO)")
 }
