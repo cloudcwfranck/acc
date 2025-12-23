@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Demo Workflow Upload Job Running on PRs
+
+**Summary**: Fixed demo validation workflow configuration bug where the `upload-to-release` job was incorrectly running on pull requests and failing due to missing artifacts.
+
+**What's Fixed:**
+
+- ✅ **Workflow Condition** - Added explicit `github.event_name == 'push'` check to upload-to-release job
+- ✅ **PR Stability** - Job now only runs on version tags, not on pull requests
+- ✅ **Clear Intent** - Updated condition from `if: startsWith(github.ref, 'refs/tags/v')` to `if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')`
+
+**Why This Matters:**
+
+The `upload-to-release` job depends on the `demo-recording` artifact which is only created on version tag pushes. When the job ran on PRs (due to incomplete condition), it failed trying to download a non-existent artifact. This fix ensures the job is completely skipped on PRs, improving CI stability.
+
+**Files Modified:**
+
+- `.github/workflows/demo.yml` - Updated upload-to-release job condition
+
+**Impact:** Workflow infrastructure fix, no user-facing changes
+
+---
+
 ### Added - v0.3.1: Trust Enforcement for Run and Push
 
 **Summary**: Optional attestation enforcement extends `acc run` and `acc push` to require verified attestations before execution or registry push. This opt-in policy gate ensures only attested workloads proceed, strengthening supply chain security.
