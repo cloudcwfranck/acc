@@ -39,8 +39,8 @@ type RegistryConfig struct {
 }
 
 type PolicyConfig struct {
-	Mode                string `mapstructure:"mode"`                // enforce|warn
-	RequireAttestation  bool   `mapstructure:"requireAttestation"`  // v0.3.1: require verified attestations for run/push
+	Mode               string `mapstructure:"mode"`               // enforce|warn
+	RequireAttestation bool   `mapstructure:"requireAttestation"` // v0.3.1: require verified attestations for run/push
 }
 
 type SigningConfig struct {
