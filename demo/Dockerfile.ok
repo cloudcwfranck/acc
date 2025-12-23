@@ -1,0 +1,6 @@
+FROM alpine:3.19
+RUN addgroup -g 1000 appuser && adduser -D -u 1000 -G appuser appuser
+USER appuser
+WORKDIR /app
+COPY . /app
+CMD ["sh", "-c", "echo 'Hello from non-root user'"]

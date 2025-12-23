@@ -1,0 +1,5 @@
+FROM alpine:3.19
+# Intentionally no USER directive - runs as root
+WORKDIR /app
+COPY . /app
+CMD ["sh", "-c", "echo 'Hello from root user'"]

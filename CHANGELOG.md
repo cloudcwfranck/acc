@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Interactive Demo Infrastructure
+
+**Summary**: New deterministic, reproducible interactive demo using asciinema for showcasing acc's policy verification workflow. Includes validation scripts, CI automation, and web integration.
+
+**What's New:**
+
+- ✅ **Demo validation script** (`demo/run.sh`) - Validates 8 scenarios covering v0.2.7 and v0.3.0 features
+- ✅ **Recording infrastructure** (`demo/record.sh`, `demo/demo-script.sh`) - Orchestrates asciinema recordings with preflight validation
+- ✅ **CI/CD automation** (`.github/workflows/demo.yml`) - Runs demo validation on PRs and uploads recordings on releases
+- ✅ **Web integration** - asciinema-player component for Next.js website with dual source support (asciinema.org + local files)
+- ✅ **Demo page fix** (`docs/demo/index.html`) - Fixed auto-play for htmlpreview.github.io viewing with intelligent URL detection
+
+**Demo Features:**
+
+- Deterministic and reproducible workflow (60-90 seconds)
+- Shows full acc lifecycle: init, verify (PASS/FAIL), explain, attest, trust status
+- Contract compliant with exit codes and JSON output validation
+- Works both locally and through GitHub Pages/htmlpreview
+
+**Files Added:**
+
+- `demo/run.sh` - Comprehensive validation with 8 test scenarios
+- `demo/record.sh` - Recording orchestration with preflight checks
+- `demo/demo-script.sh` - Demo commands for asciinema
+- `demo/Dockerfile.ok`, `demo/Dockerfile.root` - Test images (passing/failing)
+- `demo/README.md` - Complete documentation
+- `.github/workflows/demo.yml` - CI validation workflow
+- `site/components/DemoPlayer.tsx` - React component for asciinema-player
+- `site/.env.local.example` - Environment configuration template
+- `site/public/demo/demo.cast` - Placeholder recording
+
+**Files Modified:**
+
+- `docs/demo/index.html` - Fixed asciinema player for htmlpreview.github.io
+- `site/app/page.tsx` - Integrated DemoPlayer component
+- `site/public/demo/README.md` - Updated for asciinema approach
+
+---
+
 ### Added - Attestation Verification (v0.3.0)
 
 **Summary**: New `acc trust verify` command for local-only, read-only attestation verification. Validates that attestations exist and are valid for a given image.

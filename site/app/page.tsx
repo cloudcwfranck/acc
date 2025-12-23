@@ -1,5 +1,10 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import DemoPlayer from '../components/DemoPlayer';
+
+// Get demo source from environment
+const ASCIINEMA_ID = process.env.NEXT_PUBLIC_ASCIINEMA_ID;
+const LOCAL_CAST = ASCIINEMA_ID ? undefined : '/demo/demo.cast';
 
 export default function Home() {
   return (
@@ -24,33 +29,27 @@ export default function Home() {
       {/* Demo Section */}
       <section className="container">
         <div className="demo-container">
-          <div className="demo-placeholder">
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎬</div>
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+            <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
               Interactive Demo
-            </h3>
-            <p style={{ marginBottom: '2rem', fontSize: '1rem', lineHeight: '1.6' }}>
-              See acc in action with a terminal walkthrough showing policy
-              verification, trust inspection, and attestation workflows.
+            </h2>
+            <p style={{ color: 'rgba(var(--foreground-rgb), 0.7)', fontSize: '1.1rem' }}>
+              See acc in action with a terminal walkthrough
             </p>
-            <Link href="/docs" className="btn btn-primary">
+          </div>
+          <DemoPlayer asciinemaId={ASCIINEMA_ID} localCastPath={LOCAL_CAST} />
+          <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+            <Link href="/docs" className="btn btn-secondary" style={{ marginRight: '1rem' }}>
               View Quick Start Guide
             </Link>
-            <p
-              style={{
-                marginTop: '2rem',
-                fontSize: '0.875rem',
-                color: 'rgba(var(--foreground-rgb), 0.4)',
-              }}
+            <a
+              href="https://github.com/cloudcwfranck/acc"
+              className="btn btn-secondary"
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              Terminal demo recording coming soon •{' '}
-              <a
-                href="https://github.com/cloudcwfranck/acc"
-                style={{ color: 'rgb(var(--primary-rgb))' }}
-              >
-                View on GitHub
-              </a>
-            </p>
+              View on GitHub
+            </a>
           </div>
         </div>
       </section>
