@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Production Demo Scripts (Exact 9-Command Sequence)
+
+**Summary**: Updated core demo scripts (demo/run.sh, demo/demo-script.sh, demo/record.sh) to implement the exact 9-command production sequence with correct prompt and terminal dimensions.
+
+**What's Fixed:**
+
+- ✅ **demo/run.sh** - Complete production validator with all 9 commands, exit code assertions (PASS=0, FAIL=1), JSON schema validation, and self-validation (exits 1 on any assertion failure)
+- ✅ **demo/demo-script.sh** - Updated to execute EXACT 9-command sequence with `csengineering$` prompt (cyan colored), proper pauses, and full trust cycle
+- ✅ **demo/record.sh** - Fixed terminal dimensions (100×28 rows, was 30), runs preflight validation via demo/run.sh before recording
+
+**Key Improvements:**
+
+1. **Exact 9 commands**: version → init → build PASS → verify PASS + jq → exit code → build FAIL → verify FAIL + jq → policy explain → full trust cycle (verify → attest → trust status)
+2. **Contract compliance**: Validates exit codes per Testing Contract v0.3.0 (PASS=0, FAIL=1)
+3. **JSON schema validation**: Asserts `.status`, `.sbomPresent`, `.policyResult.violations[0].rule`, `.attestations|length`
+4. **Colored prompt**: `csengineering$` in cyan (ANSI escape codes)
+5. **Self-validating**: demo/run.sh fails if acc behavior regresses
+6. **Duration**: ~60-85 seconds with readable pauses
+
+**Files Modified:**
+
+- `demo/run.sh` - Production validator (193 lines, validates all 9 commands with assertions)
+- `demo/demo-script.sh` - Recording script (105 lines, executes exact 9 commands)
+- `demo/record.sh` - Recording orchestration (fixed terminal size to 28 rows)
+
+**Testing**: Run `bash demo/run.sh` to validate all 9 commands work correctly. Exits 0 on success, 1 on any assertion failure.
+
+---
+
 ### Added - Production Interactive Demo v2
 
 **Summary**: Production-quality 9-command demo with `csengineering$` prompt proving acc's value in 60-90 seconds. Deterministic, reproducible, and ready for CI/CD.
