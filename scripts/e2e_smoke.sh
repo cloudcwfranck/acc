@@ -796,6 +796,120 @@ else
 fi
 
 # ============================================================================
+# TEST 10: Trust Enforcement (v0.3.1)
+# ============================================================================
+
+log_section "TEST 10: Trust Enforcement (v0.3.1)"
+
+# Test 10.1: Baseline - run without enforcement (should work as before)
+log "Test 10.1: Run without enforcement (baseline - should work)"
+
+# Ensure we're using demo-app:ok which has attestation from TEST 6
+set +e
+run_no_enforce_output=$($ACC_BIN run demo-app:ok -- echo "test" 2>&1)
+run_no_enforce_exit=$?
+set -e
+
+# Run should work (exit 0) or may not be fully implemented yet
+if [ $run_no_enforce_exit -eq 0 ]; then
+    log_success "acc run (no enforcement): succeeded (exit 0)"
+elif [ $run_no_enforce_exit -eq 1 ]; then
+    log "⚠️  acc run (no enforcement): exit 1 (verification might have failed, or not implemented)"
+else
+    log "⚠️  acc run (no enforcement): exit $run_no_enforce_exit (command might not support local execution yet)"
+fi
+
+# Test 10.2: Enable enforcement in config and run WITH attestation
+log "Test 10.2: Run with enforcement enabled + image HAS attestation (should proceed)"
+
+# Create a test config with requireAttestation: true
+cat > "$WORKDIR/acc-enforce.yaml" <<EOF
+project:
+  name: demo-project
+
+build:
+  context: .
+  defaultTag: latest
+
+registry:
+  default: localhost:5000
+
+policy:
+  mode: enforce
+  requireAttestation: true
+
+signing:
+  mode: keyless
+
+sbom:
+  format: spdx
+EOF
+
+# Run with enforcement config (demo-app:ok has attestation from TEST 6)
+set +e
+run_enforce_ok_output=$($ACC_BIN --config "$WORKDIR/acc-enforce.yaml" run demo-app:ok -- echo "test" 2>&1)
+run_enforce_ok_exit=$?
+set -e
+
+log "Run with enforcement (HAS attestation) output:"
+echo "$run_enforce_ok_output" | head -20 | tee -a "$LOGFILE"
+
+# Should succeed (exit 0) or not be implemented
+if [ $run_enforce_ok_exit -eq 0 ]; then
+    log_success "acc run (enforcement + HAS attestation): exit 0 (allowed to run)"
+elif [ $run_enforce_ok_exit -eq 1 ]; then
+    log "⚠️  acc run (enforcement + HAS attestation): exit 1 (unexpected - should allow run)"
+    log "Output: $run_enforce_ok_output"
+else
+    log "⚠️  acc run (enforcement + HAS attestation): exit $run_enforce_ok_exit"
+fi
+
+# Test 10.3: Run with enforcement enabled + image NO attestation (should block)
+log "Test 10.3: Run with enforcement enabled + image NO attestation (should block)"
+
+# Use demo-app:root which was verified in TEST 4 but NOT attested
+set +e
+run_enforce_fail_output=$($ACC_BIN --config "$WORKDIR/acc-enforce.yaml" run demo-app:root -- echo "test" 2>&1)
+run_enforce_fail_exit=$?
+set -e
+
+log "Run with enforcement (NO attestation) output:"
+echo "$run_enforce_fail_output" | head -20 | tee -a "$LOGFILE"
+
+# Should block (exit 1)
+if [ $run_enforce_fail_exit -eq 1 ]; then
+    log_success "acc run (enforcement + NO attestation): exit 1 (blocked as expected)"
+
+    # Check for remediation message
+    if echo "$run_enforce_fail_output" | grep -qi "attestation"; then
+        log_success "Error message mentions attestation requirement"
+    else
+        log "⚠️  Error message should mention attestation requirement"
+    fi
+elif [ $run_enforce_fail_exit -eq 0 ]; then
+    log_error "acc run (enforcement + NO attestation): exit 0 (should have blocked!)"
+else
+    log "⚠️  acc run (enforcement + NO attestation): exit $run_enforce_fail_exit"
+fi
+
+# Test 10.4: Run with enforcement + never verified image (should block)
+log "Test 10.4: Run with enforcement + never verified image (should block)"
+
+set +e
+run_enforce_unknown_output=$($ACC_BIN --config "$WORKDIR/acc-enforce.yaml" run demo-app:never-verified -- echo "test" 2>&1)
+run_enforce_unknown_exit=$?
+set -e
+
+# Should block (exit 1 or 2)
+if [ $run_enforce_unknown_exit -eq 1 ] || [ $run_enforce_unknown_exit -eq 2 ]; then
+    log_success "acc run (enforcement + unknown): exit $run_enforce_unknown_exit (blocked)"
+elif [ $run_enforce_unknown_exit -eq 0 ]; then
+    log_error "acc run (enforcement + unknown): exit 0 (should have blocked!)"
+else
+    log "⚠️  acc run (enforcement + unknown): exit $run_enforce_unknown_exit"
+fi
+
+# ============================================================================
 # RESULTS
 # ============================================================================
 

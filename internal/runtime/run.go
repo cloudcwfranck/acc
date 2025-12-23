@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cloudcwfranck/acc/internal/config"
+	"github.com/cloudcwfranck/acc/internal/trust"
 	"github.com/cloudcwfranck/acc/internal/ui"
 	"github.com/cloudcwfranck/acc/internal/verify"
 )
@@ -47,7 +48,35 @@ func Run(cfg *config.Config, opts *RunOptions, outputJSON bool) error {
 	}
 
 	if !outputJSON {
-		ui.PrintSuccess("Verification passed - proceeding to run workload")
+		ui.PrintSuccess("Verification passed")
+	}
+
+	// v0.3.1: Optional attestation enforcement
+	if cfg.Policy.RequireAttestation {
+		if !outputJSON {
+			ui.PrintTrust("Checking attestation requirement...")
+		}
+
+		attestResult, err := trust.VerifyAttestations(opts.ImageRef, outputJSON)
+		if err != nil || attestResult.VerificationStatus != "verified" {
+			// Attestation enforcement blocks execution (same exit code as verification gate)
+			if !outputJSON {
+				ui.PrintError("Attestation requirement not met - workload will NOT run")
+				fmt.Fprintf(os.Stderr, "\nRemediation:\n")
+				fmt.Fprintf(os.Stderr, "  1. Verify the workload: acc verify %s\n", opts.ImageRef)
+				fmt.Fprintf(os.Stderr, "  2. Create attestation: acc attest %s\n", opts.ImageRef)
+				fmt.Fprintf(os.Stderr, "  3. Re-run: acc run %s\n", opts.ImageRef)
+			}
+			return fmt.Errorf("attestation requirement not met: %s", attestResult.VerificationStatus)
+		}
+
+		if !outputJSON {
+			ui.PrintSuccess(fmt.Sprintf("Attestation verified (%d found)", attestResult.AttestationCount))
+		}
+	}
+
+	if !outputJSON {
+		ui.PrintInfo("Proceeding to run workload")
 	}
 
 	// Detect runtime tool

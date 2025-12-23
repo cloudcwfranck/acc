@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cloudcwfranck/acc/internal/config"
+	"github.com/cloudcwfranck/acc/internal/trust"
 	"github.com/cloudcwfranck/acc/internal/ui"
 )
 
@@ -68,6 +69,30 @@ func Push(cfg *config.Config, imageRef string, outputJSON bool) (*PushResult, er
 	// Ensure imageRef matches last verified image (by digest)
 	if err := validateImageMatch(imageRef, state); err != nil {
 		return nil, err
+	}
+
+	// v0.3.1: Optional attestation enforcement
+	if cfg.Policy.RequireAttestation {
+		if !outputJSON {
+			ui.PrintTrust("Checking attestation requirement...")
+		}
+
+		attestResult, err := trust.VerifyAttestations(imageRef, outputJSON)
+		if err != nil || attestResult.VerificationStatus != "verified" {
+			// Attestation enforcement blocks push (same exit code as verification gate)
+			if !outputJSON {
+				ui.PrintError("Attestation requirement not met - push BLOCKED")
+				fmt.Fprintf(os.Stderr, "\nRemediation:\n")
+				fmt.Fprintf(os.Stderr, "  1. Verify the workload: acc verify %s\n", imageRef)
+				fmt.Fprintf(os.Stderr, "  2. Create attestation: acc attest %s\n", imageRef)
+				fmt.Fprintf(os.Stderr, "  3. Re-push: acc push %s\n", imageRef)
+			}
+			return nil, fmt.Errorf("attestation requirement not met: %s", attestResult.VerificationStatus)
+		}
+
+		if !outputJSON {
+			ui.PrintSuccess(fmt.Sprintf("Attestation verified (%d found)", attestResult.AttestationCount))
+		}
 	}
 
 	// Resolve digest
