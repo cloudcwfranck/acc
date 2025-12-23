@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - v0.3.1: Trust Enforcement for Run and Push
+
+**Summary**: Optional attestation enforcement extends `acc run` and `acc push` to require verified attestations before execution or registry push. This opt-in policy gate ensures only attested workloads proceed, strengthening supply chain security.
+
+**What's New:**
+
+- ✅ **Optional Attestation Enforcement** - New config field `policy.requireAttestation` (default: false)
+- ✅ **Run Command Enforcement** - `acc run` blocks execution if attestations unverified when enforcement enabled
+- ✅ **Push Command Enforcement** - `acc push` blocks registry push if attestations unverified when enforcement enabled
+- ✅ **Backward Compatible** - Default behavior unchanged (preserves v0.3.0 behavior)
+- ✅ **Clear Remediation** - User-friendly error messages with step-by-step fix instructions
+- ✅ **Testing Contract Updated** - Documented in docs/testing-contract.md with version history
+
+**Configuration:**
+
+```yaml
+policy:
+  mode: enforce
+  requireAttestation: true  # v0.3.1: require verified attestations for run/push
+```
+
+**Behavior:**
+
+1. **Enforcement Disabled (default)**: `acc run` and `acc push` work as before (v0.3.0 behavior)
+2. **Enforcement Enabled**: Commands check attestations via `acc trust verify` logic
+   - If attestations verified: proceed normally (exit 0)
+   - If attestations unverified/missing: block execution (exit 1) with remediation steps
+3. **Exit Code Preserved**: Enforcement uses exit 1 (same as verification gate)
+
+**Remediation Example:**
+
+```
+❌ Attestation requirement not met - workload will NOT run
+
+Remediation:
+  1. Verify the workload: acc verify demo-app:latest
+  2. Create attestation: acc attest demo-app:latest
+  3. Re-run: acc run demo-app:latest
+```
+
+**Implementation:**
+
+- `internal/config/config.go`: Added `RequireAttestation` field to `PolicyConfig`
+- `internal/runtime/run.go`: Enforcement check before container execution
+- `internal/push/push.go`: Enforcement check before registry push
+- `scripts/e2e_smoke.sh`: TEST 10 with 4 test cases (baseline, with attestation, without attestation, unknown image)
+
+**Testing Contract (v0.3.1):**
+
+- Exit code semantics: Run/push exit 1 includes "verification failed OR attestation enforcement blocked"
+- Default behavior unchanged: `requireAttestation: false` preserves v0.3.0
+- Breaking change guardrail: Changing default to `true` would require MAJOR version bump
+
+**Files Modified:**
+
+- `internal/config/config.go` - Added `RequireAttestation bool` field
+- `internal/runtime/run.go` - Trust enforcement check with remediation
+- `internal/push/push.go` - Trust enforcement check with remediation
+- `scripts/e2e_smoke.sh` - TEST 10: Trust Enforcement (4 test cases)
+- `docs/testing-contract.md` - v0.3.1 section in version history, updated Run Command guarantees, updated exit code table
+
+**Acceptance Criteria:**
+
+- ✅ Tier 0 tests pass (CLI help matrix)
+- ✅ `go test ./...` passes (all unit tests)
+- ✅ Code compiles without errors
+- ✅ Enforcement is opt-in (default: false)
+- ✅ Clear remediation messages provided
+- ✅ Exit code semantics preserved
+
+**Release**: v0.3.1 (backward compatible MINOR version bump)
+
+---
+
 ### Enhanced - Production Demo with Real CLI Output and Rich Colors
 
 **Summary**: Enhanced interactive demo with accurate CLI output, vibrant colors for visual clarity, and improved user education through `acc --help` and `ls -al` commands.

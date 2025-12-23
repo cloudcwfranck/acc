@@ -424,9 +424,20 @@ acc run <image> [-- command args...]
 
 **Exit Codes**:
 - 0: Container ran successfully
-- 1: Verification failed
+- 1: Verification failed OR attestation enforcement blocked execution (v0.3.1+)
 - 2: Runtime error
 - Non-zero: Not implemented or container failed
+
+**Optional Attestation Enforcement** (v0.3.1):
+- When `policy.requireAttestation: true` in config, `acc run` MUST verify attestations exist
+- Enforcement uses `acc trust verify` logic as source of truth
+- If attestations are unverified or missing, execution MUST be blocked (exit 1)
+- Default behavior: `requireAttestation: false` (preserves v0.3.0 behavior)
+- Clear remediation messages MUST be shown when enforcement blocks execution
+
+**Breaking Changes**:
+- Changing default `requireAttestation` to `true` would be a MAJOR version bump
+- Exit code semantics preserved: verification gates always use exit 1
 
 **Contract Status**: Partially implemented - validation in Tier 0, functional test optional
 
@@ -476,8 +487,8 @@ acc run <image> [-- command args...]
 | `acc inspect` | Inspection succeeded | N/A | N/A | Always exit 0, check `.status` field |
 | `acc trust status` | Status is pass | Status is fail or warn | Status is unknown (cannot compute) | Exit codes unchanged in v0.2.7 |
 | `acc trust verify` | Attestations verified | Attestations unverified (none or invalid) | Cannot verify (image not found) | v0.3.0: Local-only, read-only |
-| `acc run` | Container ran successfully | Verification failed | Runtime error | Verification gate enforced |
-| `acc push` | Push succeeded | Push failed or verification gate blocked | N/A | Verification gate enforced |
+| `acc run` | Container ran successfully | Verification failed OR attestation enforcement blocked (v0.3.1+) | Runtime error | Verification gate enforced; optional attestation enforcement (v0.3.1) |
+| `acc push` | Push succeeded | Push failed OR verification/attestation gate blocked (v0.3.1+) | N/A | Verification gate enforced; optional attestation enforcement (v0.3.1) |
 | `acc policy explain` | Explanation available | Varies by implementation | Varies by implementation | |
 
 **Exit Code Semantics**:
@@ -818,6 +829,26 @@ Update this contract when:
 ---
 
 ## Version History
+
+### v0.3.1 (2025-12-23)
+- **Added**: Optional attestation enforcement for `acc run` and `acc push`
+  - New config field: `policy.requireAttestation` (default: false)
+  - When enabled, commands MUST verify attestations exist before execution
+  - Uses `acc trust verify` logic as source of truth
+  - Exit code semantics preserved: enforcement blocks with exit 1
+- **Contract**: Run Command updated with optional enforcement guarantees
+  - Default behavior unchanged (preserves v0.3.0 behavior)
+  - Clear remediation messages shown when enforcement blocks
+  - Breaking change: Changing default to `true` would be MAJOR version bump
+- **Contract**: Exit code table updated for run/push commands
+  - Exit 1 now includes: verification failed OR attestation enforcement blocked
+  - Notes column clarifies optional enforcement (v0.3.1+)
+- **Added**: Tier 1 E2E tests for trust enforcement (TEST 10, 4 test cases)
+  - Baseline: run without enforcement (preserves existing behavior)
+  - Enforcement with attestation (should proceed)
+  - Enforcement without attestation (should block)
+  - Enforcement with unknown image (should block)
+- **Breaking**: None (backward compatible, opt-in feature only)
 
 ### v0.3.0 (2025-12-22)
 - **Added**: `acc trust verify` command for attestation verification
