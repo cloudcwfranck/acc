@@ -52,7 +52,7 @@ mkdir -p "$WORKDIR"
 # Record the demo
 asciinema rec "$CAST_FILE" \
     --cols 100 \
-    --rows 30 \
+    --rows 28 \
     --title "acc - Policy Verification for CI/CD" \
     --command "bash $SCRIPT_DIR/demo-script.sh $WORKDIR $ACC_BIN"
 
