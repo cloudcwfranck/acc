@@ -3,6 +3,7 @@ import Image from 'next/image';
 import DemoPlayer from '../components/DemoPlayer';
 
 // Get demo source from environment
+// Demo player will auto-load from local cast file if no asciinema ID is set
 const ASCIINEMA_ID = process.env.NEXT_PUBLIC_ASCIINEMA_ID;
 const LOCAL_CAST = ASCIINEMA_ID ? undefined : '/demo/demo.cast';
 
