@@ -407,6 +407,7 @@ func NewPolicyCmd() *cobra.Command {
 
 func NewAttestCmd() *cobra.Command {
 	var imageRef string
+	var remote bool
 
 	cmd := &cobra.Command{
 		Use:   "attest [image]",
@@ -429,8 +430,8 @@ func NewAttestCmd() *cobra.Command {
 				return fmt.Errorf("image reference required\n\nUsage: acc attest <image>")
 			}
 
-			// Create attestation
-			result, err := attest.Attest(cfg, ref, version, commit, jsonFlag)
+			// Create attestation (v0.3.2: optionally publish to remote registry)
+			result, err := attest.Attest(cfg, ref, version, commit, remote, jsonFlag)
 			if err != nil {
 				return err
 			}
@@ -444,6 +445,7 @@ func NewAttestCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to attest")
+	cmd.Flags().BoolVar(&remote, "remote", false, "publish attestation to remote registry (v0.3.2)")
 
 	return cmd
 }
@@ -509,6 +511,7 @@ func NewTrustCmd() *cobra.Command {
 
 func NewTrustStatusCmd() *cobra.Command {
 	var imageRef string
+	var remote bool
 
 	cmd := &cobra.Command{
 		Use:   "status [image]",
@@ -525,8 +528,8 @@ func NewTrustStatusCmd() *cobra.Command {
 				return fmt.Errorf("image reference required\n\nUsage: acc trust status <image>")
 			}
 
-			// Load trust status
-			result, err := trust.Status(ref, jsonFlag)
+			// Load trust status (v0.3.2: optionally fetch remote attestations)
+			result, err := trust.Status(ref, remote, jsonFlag)
 			if err != nil {
 				return err
 			}
@@ -541,17 +544,19 @@ func NewTrustStatusCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to check")
+	cmd.Flags().BoolVar(&remote, "remote", false, "fetch attestations from remote registry (v0.3.2)")
 
 	return cmd
 }
 
 func NewTrustVerifyCmd() *cobra.Command {
 	var imageRef string
+	var remote bool
 
 	cmd := &cobra.Command{
 		Use:   "verify [image]",
 		Short: "Verify attestations for an image",
-		Long:  "Verify that attestations exist and are valid for an image (local-only, read-only)",
+		Long:  "Verify that attestations exist and are valid for an image (v0.3.2: optionally fetch from remote registry)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref := imageRef
@@ -563,8 +568,8 @@ func NewTrustVerifyCmd() *cobra.Command {
 				return fmt.Errorf("image reference required\n\nUsage: acc trust verify <image>")
 			}
 
-			// Verify attestations (v0.3.0: local-only, read-only)
-			result, err := trust.VerifyAttestations(ref, jsonFlag)
+			// Verify attestations (v0.3.2: optionally fetch from remote registry)
+			result, err := trust.VerifyAttestations(ref, remote, jsonFlag)
 			if err != nil {
 				// Still print JSON if requested, even on error
 				if jsonFlag && result != nil {
@@ -584,6 +589,7 @@ func NewTrustVerifyCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&imageRef, "image", "i", "", "image reference to verify")
+	cmd.Flags().BoolVar(&remote, "remote", false, "fetch attestations from remote registry (v0.3.2)")
 
 	return cmd
 }

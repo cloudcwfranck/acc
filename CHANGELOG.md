@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - v0.3.2 WIP: Remote Attestation Publishing and Fetching
+
+**Summary**: Infrastructure for remote attestation publishing and fetching via OCI registries. CLI flags and structure implemented, full OCI integration pending.
+
+**What's New:**
+
+- ✅ **CLI Flags** - `--remote` flag added to attest, trust verify, and trust status
+- ✅ **Test Infrastructure** - TEST 6 added to Tier 2 registry integration tests
+- ✅ **Backward Compatible** - All existing tests pass, default behavior unchanged
+- ⏳ **OCI Implementation Pending** - Stubs return "not implemented" (to be completed)
+
+**Commands:**
+```bash
+acc attest --remote <image>           # Publish to registry (stub)
+acc trust verify --remote <image>     # Fetch from registry (stub)
+acc trust status --remote <image>     # Fetch from registry (stub)
+```
+
+**Files Modified:** `cmd/acc/main.go`, `internal/attest/attest.go`, `internal/trust/{status,verify}.go`, `scripts/registry_integration.sh`, test files
+
+**Next Steps:** Implement OCI push/pull using oras-go or go-containerregistry
+
+---
+
 ### Fixed - Demo Workflow Upload Job Running on PRs
 
 **Summary**: Fixed demo validation workflow configuration bug where the `upload-to-release` job was incorrectly running on pull requests and failing due to missing artifacts.

@@ -64,7 +64,8 @@ type VerifyState struct {
 }
 
 // Attest creates an attestation for an image
-func Attest(cfg *config.Config, imageRef, version, commit string, outputJSON bool) (*AttestResult, error) {
+// v0.3.2: optionally publish to remote registry when remote=true
+func Attest(cfg *config.Config, imageRef, version, commit string, remote, outputJSON bool) (*AttestResult, error) {
 	if imageRef == "" {
 		return nil, fmt.Errorf("image reference required")
 	}
@@ -157,6 +158,22 @@ func Attest(cfg *config.Config, imageRef, version, commit string, outputJSON boo
 	result := &AttestResult{
 		OutputPath:  outputPath,
 		Attestation: attestation,
+	}
+
+	// v0.3.2: Optionally publish attestation to remote registry
+	if remote {
+		if !outputJSON {
+			ui.PrintInfo("Publishing attestation to remote registry...")
+		}
+
+		// Publish to remote OCI registry
+		if err := publishAttestationToRegistry(imageRef, &attestation, outputJSON); err != nil {
+			return nil, fmt.Errorf("failed to publish attestation to remote registry: %w", err)
+		}
+
+		if !outputJSON {
+			ui.PrintSuccess("Attestation published to remote registry")
+		}
 	}
 
 	return result, nil
@@ -402,6 +419,23 @@ func resolveDigest(imageRef string) (string, error) {
 	}
 
 	return "", fmt.Errorf("could not resolve digest")
+}
+
+// publishAttestationToRegistry publishes an attestation to a remote OCI registry
+// v0.3.2: Remote attestation publishing
+func publishAttestationToRegistry(imageRef string, attestation *Attestation, outputJSON bool) error {
+	// v0.3.2: Remote attestation publishing implementation
+	// TODO: Implement OCI artifact push using oras-go or go-containerregistry
+	//
+	// Design:
+	// 1. Convert attestation to JSON
+	// 2. Create OCI artifact with media type: application/vnd.acc.attestation.v1+json
+	// 3. Tag/reference using image digest
+	// 4. Push to registry using standard Docker auth (~/.docker/config.json)
+	//
+	// For now, return not implemented error to allow compilation and testing
+
+	return fmt.Errorf("remote attestation publishing not yet implemented (v0.3.2 TODO)")
 }
 
 // FormatJSON formats attestation result as JSON

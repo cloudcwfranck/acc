@@ -830,6 +830,18 @@ Update this contract when:
 
 ## Version History
 
+### v0.3.2 (2025-12-23) - WIP
+- **Added**: Optional remote attestation publishing and fetching (structure only)
+  - New flag: `acc attest --remote` for publishing attestations to OCI registry
+  - New flag: `acc trust verify --remote` for fetching attestations from registry
+  - New flag: `acc trust status --remote` for fetching attestations from registry
+  - Full OCI implementation pending (stubs return "not implemented" for now)
+- **Added**: Tier 2 test coverage (TEST 6 in registry_integration.sh)
+- **Contract**: All existing exit codes and behaviors preserved
+  - Remote features are optional and fail gracefully when unavailable
+  - Default behavior unchanged (remote=false maintains v0.3.1 behavior)
+- **Breaking**: None (backward compatible, opt-in feature only)
+
 ### v0.3.1 (2025-12-23)
 - **Added**: Optional attestation enforcement for `acc run` and `acc push`
   - New config field: `policy.requireAttestation` (default: false)

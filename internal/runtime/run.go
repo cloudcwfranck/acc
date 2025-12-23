@@ -57,7 +57,8 @@ func Run(cfg *config.Config, opts *RunOptions, outputJSON bool) error {
 			ui.PrintTrust("Checking attestation requirement...")
 		}
 
-		attestResult, err := trust.VerifyAttestations(opts.ImageRef, outputJSON)
+		// Use local attestations only for enforcement check (remote=false)
+		attestResult, err := trust.VerifyAttestations(opts.ImageRef, false, outputJSON)
 		if err != nil || attestResult.VerificationStatus != "verified" {
 			// Attestation enforcement blocks execution (same exit code as verification gate)
 			if !outputJSON {

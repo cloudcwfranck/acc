@@ -152,7 +152,7 @@ func TestAttestWithoutVerifyState(t *testing.T) {
 	cfg := config.DefaultConfig("test-project")
 
 	// Try to attest without verify state (should fail)
-	_, err = Attest(cfg, "test:latest", "v0.1", "abc123", true)
+	_, err = Attest(cfg, "test:latest", "v0.1", "abc123", false, true)
 	if err == nil {
 		t.Error("expected error when verify state missing, got nil")
 	}
@@ -205,7 +205,7 @@ func TestAttestWithVerifyState(t *testing.T) {
 	}
 
 	// Attest
-	result, err := Attest(cfg, "test:latest", "v0.1.0", "abc123", true)
+	result, err := Attest(cfg, "test:latest", "v0.1.0", "abc123", false, true)
 	if err != nil {
 		t.Fatalf("Attest failed: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestAttestImageMismatch(t *testing.T) {
 	}
 
 	// Try to attest different image (should fail)
-	_, err = Attest(cfg, "test:latest", "v0.1", "abc123", true)
+	_, err = Attest(cfg, "test:latest", "v0.1", "abc123", false, true)
 	if err == nil {
 		t.Error("expected error for image mismatch, got nil")
 	}
@@ -371,7 +371,7 @@ func TestAttest_NoCreationMessageOnFailure(t *testing.T) {
 
 	// Attempt to attest without verify state should fail
 	// The bug was that "Creating attestation..." was printed even on failure
-	_, err = Attest(cfg, "test:image", "v0.1.5", "test-commit", false)
+	_, err = Attest(cfg, "test:image", "v0.1.5", "test-commit", false, false)
 
 	if err == nil {
 		t.Error("Expected error when verification state missing, got nil")
@@ -432,7 +432,7 @@ func TestAttest_CreationMessageOnlyOnSuccess(t *testing.T) {
 
 	// This should succeed and create an attestation
 	// The "Creating attestation..." message should appear AFTER validation passes
-	result, err := Attest(cfg, "test:image", "v0.1.5", "test-commit", true)
+	result, err := Attest(cfg, "test:image", "v0.1.5", "test-commit", false, true)
 
 	if err != nil {
 		t.Logf("Attest failed (expected if container tools unavailable): %v", err)

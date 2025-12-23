@@ -45,7 +45,7 @@ func TestStatusUnknown(t *testing.T) {
 	os.Chdir(tmpDir)
 
 	// Status for non-existent image should return unknown
-	result, err := Status("never-verified:latest", true)
+	result, err := Status("never-verified:latest", false, true)
 	if err != nil {
 		t.Errorf("Status() error = %v, want nil", err)
 	}
@@ -143,7 +143,7 @@ func TestStatusWithVerifyState(t *testing.T) {
 	}
 
 	// Load status
-	result, err := Status("test:latest", true)
+	result, err := Status("test:latest", false, true)
 	if err != nil {
 		t.Errorf("Status() error = %v, want nil", err)
 	}
@@ -214,7 +214,7 @@ func TestStatusWithViolations(t *testing.T) {
 	}
 
 	// Load status
-	result, err := Status("test:root", true)
+	result, err := Status("test:root", false, true)
 	if err != nil {
 		t.Errorf("Status() error = %v, want nil", err)
 	}
