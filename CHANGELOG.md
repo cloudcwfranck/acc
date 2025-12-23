@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Production Interactive Demo v2
+
+**Summary**: Production-quality 9-command demo with `csengineering$` prompt proving acc's value in 60-90 seconds. Deterministic, reproducible, and ready for CI/CD.
+
+**What's New:**
+
+- ✅ **Exactly 9 commands** - Follows precise storyline: version → init → build PASS → verify PASS → exit code → build FAIL → verify FAIL → explain → attest
+- ✅ **csengineering$ prompt** - Colored cyan prompt (not generic `$`)
+- ✅ **60-90 second duration** - Timed with readable pauses between commands
+- ✅ **Full CI/CD cycle** - Shows PASS (exit 0), FAIL (exit 1), explainability, and attestation
+- ✅ **Deterministic validation** - Validates all 9 commands work correctly with exit codes + JSON schema
+- ✅ **Production scripts** - Recording, validation, and deployment infrastructure
+
+**The 9 Commands:**
+
+1. `acc version` - Prove versioned, deterministic tool
+2. `acc init demo-project` - Create policy baseline
+3. `acc build demo-app:ok` - Build PASSING workload + SBOM (non-root user)
+4. `acc verify --json demo-app:ok | jq '.status, .sbomPresent'` - Verify PASS, show JSON fields
+5. `echo $?` - Prove exit code 0 (CI gate PASS)
+6. `acc build demo-app:root` - Build FAILING workload (runs as root)
+7. `acc verify demo-app:root` - Verify FAIL (exit 1, CI gate blocks)
+8. `acc policy explain --json | jq ...` - Explainable violation (no-root-user)
+9. `acc attest demo-app:ok` - Create attestation after re-verifying PASS
+
+**Files Added:**
+
+- `demo/demo-script-v2.sh` - The 9 commands for asciinema recording
+- `demo/run-v2.sh` - Validation script (tests all 9 commands)
+- `demo/record-v2.sh` - Recording orchestration with asciinema
+- `demo/deploy-to-site.sh` - Easy deployment to website
+- `demo/README-v2.md` - Comprehensive usage guide
+- `demo/IMPLEMENTATION-SUMMARY.md` - Complete deliverables + specifications
+
+**Files Modified:**
+
+- `site/public/demo/demo.cast` - Deployed improved demo (219 lines vs 45-line placeholder)
+
+**Demo Message:** "acc is a policy verification CLI that turns cloud controls into deterministic, explainable results for CI/CD gates."
+
+---
+
 ### Fixed - Interactive Demo CSP
 
 **Summary**: Fixed Content Security Policy blocking asciinema player CDN, enabling the interactive demo to load and play on the website.
