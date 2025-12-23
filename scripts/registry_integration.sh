@@ -347,12 +347,21 @@ set -e
 
 if [ $publish_exit -eq 0 ]; then
     log_success "Remote attestation publishing succeeded"
-elif echo "$publish_output" | grep -qiE "(not implemented|flag.*not recognized)"; then
-    log "⚠️  Remote attestation publishing not implemented yet - skipping remote tests"
-    log "This is expected for v0.3.1 and earlier"
+    # v0.3.2: Verify the output indicates actual publishing (not stub)
+    if echo "$publish_output" | grep -qiE "not implemented"; then
+        log_error "FAIL: acc attest --remote returned 'not implemented' - v0.3.2 requires real OCI publishing"
+        exit 1
+    fi
 else
-    log_error "Remote attestation publishing failed"
-    log "Output: $publish_output"
+    # Allow network/auth failures, but not implementation failures
+    if echo "$publish_output" | grep -qiE "(no credentials|authentication failed|network|connection)"; then
+        log "⚠️  Remote publishing failed due to network/auth issue - skipping remote tests"
+        log "Output: $publish_output"
+    else
+        log_error "Remote attestation publishing failed"
+        log "Output: $publish_output"
+        exit 1
+    fi
 fi
 
 # Only continue with remote fetch tests if publishing worked
@@ -384,33 +393,51 @@ if [ $publish_exit -eq 0 ]; then
     if [ $verify_remote_exit -eq 0 ]; then
         log_success "Remote attestation fetching and verification succeeded"
 
+        # v0.3.2: Verify not a stub implementation
+        if echo "$verify_remote_output" | grep -qiE "not implemented"; then
+            log_error "FAIL: acc trust verify --remote returned 'not implemented' - v0.3.2 requires real OCI fetching"
+            exit 1
+        fi
+
         # Check if attestations were fetched
         attestation_count=$(echo "$verify_remote_output" | jq -r '.attestationCount' 2>/dev/null || echo "0")
         if [ "$attestation_count" -gt 0 ]; then
             log_success "Found $attestation_count remote attestation(s)"
         else
-            log_error "No attestations found after remote fetch"
+            log_error "FAIL: No attestations found after remote fetch (expected at least 1)"
+            exit 1
         fi
-    elif echo "$verify_remote_output" | grep -qiE "(not implemented|flag.*not recognized)"; then
-        log "⚠️  Remote attestation fetching not implemented yet"
     else
-        log_error "Remote attestation fetching failed with exit code $verify_remote_exit"
+        # Allow network/auth failures, but not implementation failures
+        if echo "$verify_remote_output" | grep -qiE "(no credentials|authentication failed|network|connection)"; then
+            log "⚠️  Remote fetching failed due to network/auth issue"
+            log "Output: $verify_remote_output"
+        else
+            log_error "Remote attestation fetching failed with exit code $verify_remote_exit"
+            log "Output: $verify_remote_output"
+            exit 1
+        fi
     fi
 
     # 6.5: Verify remote attestations are cached locally
     log "Step 6.5: Verify remote attestations are cached locally"
 
-    if [ -d ".acc/attestations" ]; then
-        remote_cached=$(find .acc/attestations -type f -name "*.json" | wc -l)
-        if [ "$remote_cached" -gt 0 ]; then
-            log_success "Remote attestations cached locally ($remote_cached files)"
-            log "Cached attestation paths:"
-            find .acc/attestations -type f -name "*.json" -print | head -5 | tee -a "$LOGFILE"
+    # v0.3.2: This is a REQUIRED assertion - remote fetch must cache locally
+    if [ $verify_remote_exit -eq 0 ]; then
+        if [ -d ".acc/attestations" ]; then
+            remote_cached=$(find .acc/attestations -type f -name "*.json" | wc -l)
+            if [ "$remote_cached" -gt 0 ]; then
+                log_success "Remote attestations cached locally ($remote_cached files)"
+                log "Cached attestation paths:"
+                find .acc/attestations -type f -name "*.json" -print | head -5 | tee -a "$LOGFILE"
+            else
+                log_error "FAIL: Remote fetch succeeded but no attestations cached locally"
+                exit 1
+            fi
         else
-            log "⚠️  No remote attestations found in local cache"
+            log_error "FAIL: No attestations directory created after remote fetch"
+            exit 1
         fi
-    else
-        log "⚠️  No attestations directory found after remote fetch"
     fi
 
     # 6.6: Restore local attestations if backed up
@@ -421,7 +448,7 @@ if [ $publish_exit -eq 0 ]; then
         log_success "Local attestations restored"
     fi
 else
-    log "⏭️  Skipping remote attestation fetch tests (publishing not implemented)"
+    log "⏭️  Skipping remote attestation fetch tests (publishing failed - see above)"
 fi
 
 # ============================================================================

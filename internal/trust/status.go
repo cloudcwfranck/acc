@@ -1,14 +1,20 @@
 package trust
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/cloudcwfranck/acc/internal/ui"
+	"oras.land/oras-go/v2/registry/remote"
+	"oras.land/oras-go/v2/registry/remote/auth"
+	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
 // StatusResult represents the trust status output
@@ -365,21 +371,147 @@ func getString(m map[string]interface{}, key string) string {
 }
 
 // fetchRemoteAttestations fetches attestations from a remote OCI registry and caches them locally
-// v0.3.2: Remote attestation fetching
+// v0.3.2: Real OCI attestation fetching using oras-go/v2
 func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
-	// v0.3.2: Remote attestation fetching implementation
-	// TODO: Implement OCI artifact pull using oras-go or go-containerregistry
-	//
-	// Design:
-	// 1. Resolve registry and repository from imageRef
-	// 2. Query for attestation artifacts with matching digest
-	//    - Use OCI referrers API or tag naming convention
-	//    - Media type: application/vnd.acc.attestation.v1+json
-	// 3. Pull attestation artifacts using standard Docker auth (~/.docker/config.json)
-	// 4. Cache to: .acc/attestations/<digest-prefix>/remote/<source>/<timestamp-or-hash>.json
-	// 5. Merge with existing local attestations (findAttestationsForImage will find both)
-	//
-	// For now, return not implemented error to allow compilation and testing
+	ctx := context.Background()
 
-	return fmt.Errorf("remote attestation fetching not yet implemented (v0.3.2 TODO)")
+	// 1. Parse image reference to get registry and repository
+	registry, repository, _, err := parseImageRef(imageRef)
+	if err != nil {
+		return fmt.Errorf("failed to parse image reference: %w", err)
+	}
+
+	// 2. Create OCI repository client with auth
+	repo, err := remote.NewRepository(fmt.Sprintf("%s/%s", registry, repository))
+	if err != nil {
+		return fmt.Errorf("failed to create repository client: %w", err)
+	}
+
+	// Configure auth from Docker credentials
+	repo.Client = &auth.Client{
+		Client: retry.DefaultClient,
+		Cache:  auth.NewCache(),
+		Credential: auth.CredentialFunc(func(ctx context.Context, reg string) (auth.Credential, error) {
+			return auth.Credential{}, nil // Use docker credential helpers
+		}),
+	}
+	repo.PlainHTTP = false
+
+	// 3. List tags matching our attestation naming pattern
+	// Pattern: attestation-<digest-prefix>-*
+	digestPrefix := digest
+	if len(digest) > 12 {
+		digestPrefix = digest[:12]
+	}
+	attestationPrefix := fmt.Sprintf("attestation-%s-", digestPrefix)
+
+	// List all tags
+	var attestationTags []string
+	err = repo.Tags(ctx, "", func(tags []string) error {
+		for _, tag := range tags {
+			if strings.HasPrefix(tag, attestationPrefix) {
+				attestationTags = append(attestationTags, tag)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list tags: %w", err)
+	}
+
+	if len(attestationTags) == 0 {
+		// No remote attestations found - not an error
+		if !outputJSON {
+			ui.PrintWarning("No remote attestations found")
+		}
+		return nil
+	}
+
+	// 4. Pull each attestation and cache it
+	fetchedCount := 0
+	for _, tag := range attestationTags {
+		// Resolve tag to descriptor
+		desc, err := repo.Resolve(ctx, tag)
+		if err != nil {
+			if !outputJSON {
+				ui.PrintWarning(fmt.Sprintf("Failed to resolve tag %s: %v", tag, err))
+			}
+			continue
+		}
+
+		// Fetch attestation content
+		reader, err := repo.Fetch(ctx, desc)
+		if err != nil {
+			if !outputJSON {
+				ui.PrintWarning(fmt.Sprintf("Failed to fetch attestation %s: %v", tag, err))
+			}
+			continue
+		}
+
+		attestationData, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			continue
+		}
+
+		// 5. Cache attestation locally
+		// Path: .acc/attestations/<digest-prefix>/remote/<registry>/<repo>/<hash>.json
+		cacheDir := filepath.Join(".acc", "attestations", digestPrefix, "remote", registry, repository)
+		if err := os.MkdirAll(cacheDir, 0755); err != nil {
+			return fmt.Errorf("failed to create cache directory: %w", err)
+		}
+
+		// Use hash of attestation content as filename for deduplication
+		attestationHash := fmt.Sprintf("%x", sha256.Sum256(attestationData))
+		cachePath := filepath.Join(cacheDir, attestationHash[:16]+".json")
+
+		// Check if already cached
+		if _, err := os.Stat(cachePath); err == nil {
+			continue // Already cached
+		}
+
+		// Write to cache
+		if err := os.WriteFile(cachePath, attestationData, 0644); err != nil {
+			return fmt.Errorf("failed to write attestation cache: %w", err)
+		}
+
+		fetchedCount++
+	}
+
+	if !outputJSON && fetchedCount > 0 {
+		ui.PrintSuccess(fmt.Sprintf("Fetched %d remote attestation(s)", fetchedCount))
+	}
+
+	return nil
+}
+
+// parseImageRef parses an image reference into registry, repository, and reference
+func parseImageRef(imageRef string) (registry, repository, reference string, err error) {
+	// Handle image references like:
+	// - localhost:5000/repo:tag
+	// - ghcr.io/org/repo:tag
+	// - ghcr.io/org/repo@sha256:...
+	parts := strings.SplitN(imageRef, "/", 2)
+	if len(parts) < 2 {
+		return "", "", "", fmt.Errorf("invalid image reference format: %s", imageRef)
+	}
+
+	registry = parts[0]
+	rest := parts[1]
+
+	// Split repository and reference (tag or digest)
+	if strings.Contains(rest, "@") {
+		repoParts := strings.SplitN(rest, "@", 2)
+		repository = repoParts[0]
+		reference = repoParts[1]
+	} else if strings.Contains(rest, ":") {
+		repoParts := strings.SplitN(rest, ":", 2)
+		repository = repoParts[0]
+		reference = repoParts[1]
+	} else {
+		repository = rest
+		reference = "latest"
+	}
+
+	return registry, repository, reference, nil
 }

@@ -830,16 +830,26 @@ Update this contract when:
 
 ## Version History
 
-### v0.3.2 (2025-12-23) - WIP
-- **Added**: Optional remote attestation publishing and fetching (structure only)
-  - New flag: `acc attest --remote` for publishing attestations to OCI registry
-  - New flag: `acc trust verify --remote` for fetching attestations from registry
-  - New flag: `acc trust status --remote` for fetching attestations from registry
-  - Full OCI implementation pending (stubs return "not implemented" for now)
+### v0.3.2 (2025-12-23)
+- **Added**: Remote attestation publishing and fetching via OCI registries
+  - New flag: `acc attest --remote` publishes attestations to OCI registry as artifacts
+  - New flag: `acc trust verify --remote` fetches and caches attestations from registry
+  - New flag: `acc trust status --remote` fetches and displays remote attestations
+  - Real OCI implementation using oras-go/v2 library
+  - Media type: `application/vnd.acc.attestation.v1+json`
+  - Tag naming: `attestation-<digest-prefix>-<timestamp>`
+  - Remote attestations cached to: `.acc/attestations/<digest-prefix>/remote/<registry>/<repo>/<hash>.json`
+  - Uses Docker credential helpers (~/.docker/config.json) for authentication
 - **Added**: Tier 2 test coverage (TEST 6 in registry_integration.sh)
+  - Tests real publish → delete local cache → fetch → verify workflow
+  - Asserts attestation count > 0 after remote fetch
+  - Asserts remote attestations are cached locally
+  - Fails if "not implemented" is returned (v0.3.2 requires real OCI operations)
+  - Gracefully skips on network/auth failures
 - **Contract**: All existing exit codes and behaviors preserved
-  - Remote features are optional and fail gracefully when unavailable
+  - Remote features are optional and fail gracefully when network unavailable
   - Default behavior unchanged (remote=false maintains v0.3.1 behavior)
+  - Without --remote flag, all operations remain local-only
 - **Breaking**: None (backward compatible, opt-in feature only)
 
 ### v0.3.1 (2025-12-23)
