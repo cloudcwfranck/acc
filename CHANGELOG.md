@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Enhanced - Production Demo with Real CLI Output and Rich Colors
+
+**Summary**: Enhanced interactive demo with accurate CLI output, vibrant colors for visual clarity, and improved user education through `acc --help` and `ls -al` commands.
+
+**What's Enhanced:**
+
+- ✅ **Real acc --help output** - Shows all 16 actual commands (attest, build, completion, config, help, init, inspect, login, policy, promote, push, run, trust, upgrade, verify, version) and complete Flags section (--color, --config, -h, --json, --no-emoji, --policy-pack, -q)
+- ✅ **franck@csengineering$ prompt** - Professional cyan-colored prompt instead of generic `csengineering$`
+- ✅ **ls -al after init** - Shows created files (.acc/, acc.yaml, policies) to close the loop
+- ✅ **Vibrant color scheme** - Bold green for success ("pass", true, EXIT=0), bold red for failures ("fail", violations), bright yellow for warnings, cyan for metadata
+
+**Visual Color Indicators:**
+
+- 🟢 **Green** (bold): "pass" status, true values, EXIT=0, success messages
+- 🔴 **Red** (bold): "fail" status, violation names, error messages
+- 🟡 **Yellow** (bright): Violation rule names (warning state)
+- 🔵 **Cyan** (bright): Counts, project names, metadata
+
+**Educational Improvements:**
+
+1. `acc --help` as first command - Shows users all available CLI commands
+2. `ls -al` after `acc init` - Demonstrates what files are actually created
+3. Color-coded outputs - Users instantly see success (green) vs failure (red)
+4. Real CLI output - Exact match with production `acc` behavior
+
+**Duration**: ~45 seconds
+**Terminal**: 100×28
+**Commands**: 11 total (added --help and ls -al to original 9)
+
+**Files Modified:**
+
+- `site/public/demo/demo.cast` - Updated with real acc --help output, franck@csengineering$ prompt, and vibrant colors for all outputs
+- `demo/demo-script.sh` - Enhanced to use franck@csengineering$ prompt and include acc --help + ls -al
+
+**User Experience**: The demo is now highly readable and visually intuitive. Users can parse success/failure states at a glance and see exactly what commands are available and what files get created.
+
+---
+
 ### Fixed - Production Demo Scripts (Exact 9-Command Sequence)
 
 **Summary**: Updated core demo scripts (demo/run.sh, demo/demo-script.sh, demo/record.sh) to implement the exact 9-command production sequence with correct prompt and terminal dimensions.
