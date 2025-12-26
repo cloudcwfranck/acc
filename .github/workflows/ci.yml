@@ -8,6 +8,8 @@ on:
   schedule:
     # Tier 2 nightly at 2 AM UTC
     - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual triggering (useful for Tier 2 on forks)
 
 permissions:
   contents: read
@@ -124,17 +126,21 @@ jobs:
         retention-days: 7
 
   # ============================================================================
-  # TIER 2: Registry Integration (OPTIONAL, SCHEDULED + TAGS, NEVER BLOCKS)
+  # TIER 2: Registry Integration (ENFORCEABLE ON TRUSTED EVENTS)
   # Tests push/promote workflows with GHCR
+  # Runs on: main branch, same-repo PRs, tags, schedule, manual trigger
+  # Skips on: forked PRs (secrets unavailable)
   # ============================================================================
   tier2-registry:
     name: "Tier 2: Registry Integration"
     runs-on: ubuntu-latest
-    # Only run on schedule (nightly), tags, or main branch (not PRs)
+    # Run on all events EXCEPT forked PRs (where secrets are unavailable)
     if: |
       github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
       startsWith(github.ref, 'refs/tags/') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
 
     steps:
     - name: Checkout code
@@ -174,7 +180,9 @@ jobs:
         GHCR_REGISTRY: ghcr.io
         GHCR_REPO: ${{ github.repository }}
         GHCR_USERNAME: ${{ github.actor }}
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_SHA: ${{ github.sha }}
+        TIER2_REQUIRED: "true"  # Fail if credentials missing (not a fork)
       run: bash scripts/registry_integration.sh
 
     - name: Upload Tier 2 artifacts on failure
