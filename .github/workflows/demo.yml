@@ -73,7 +73,7 @@ jobs:
           path: ./demo-files
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             demo-files/demo.cast
