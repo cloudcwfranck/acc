@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docker Credential Authentication**: Fixed remote attestation publishing/fetching authentication by properly decoding base64-encoded credentials from `~/.docker/config.json`. Previously returned empty credentials causing 403 errors when publishing to GHCR.
+- **GHCR Repository Naming**: Fixed Tier 2 registry integration to use correct GHCR image naming convention (`ghcr.io/OWNER/IMAGE:TAG` with 2 path segments instead of 3). Added validation to enforce `GHCR_REPO` format as `OWNER/IMAGE`.
+- **Registry Authentication Validation**: Added pre-flight checks to validate Docker authentication before attempting registry operations, providing clear error messages when credentials are missing.
+
 ### Added - v0.3.2: Remote Attestation Publishing and Fetching
 
 **Summary**: Remote attestation publishing and fetching via OCI registries enables attestation workflows to work across machines and CI runners. Attestations are published as OCI artifacts to container registries and fetched/cached locally on demand.

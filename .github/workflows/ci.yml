@@ -173,6 +173,7 @@ jobs:
       env:
         GHCR_REGISTRY: ghcr.io
         GHCR_REPO: ${{ github.repository }}
+        GHCR_USERNAME: ${{ github.actor }}
         GITHUB_SHA: ${{ github.sha }}
       run: bash scripts/registry_integration.sh
 
