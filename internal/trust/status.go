@@ -432,10 +432,16 @@ func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
 	}
 	attestationPrefix := fmt.Sprintf("attestation-%s-", digestPrefix)
 
+	if !outputJSON {
+		ui.PrintInfo(fmt.Sprintf("Looking for attestation tags with prefix: %s", attestationPrefix))
+	}
+
 	// List all tags
 	var attestationTags []string
+	var allTags []string
 	err = repo.Tags(ctx, "", func(tags []string) error {
 		for _, tag := range tags {
+			allTags = append(allTags, tag)
 			if strings.HasPrefix(tag, attestationPrefix) {
 				attestationTags = append(attestationTags, tag)
 			}
@@ -446,10 +452,18 @@ func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
 		return fmt.Errorf("failed to list tags: %w", err)
 	}
 
+	if !outputJSON {
+		ui.PrintInfo(fmt.Sprintf("Total tags found in repository: %d", len(allTags)))
+		if len(allTags) > 0 && len(allTags) <= 20 {
+			ui.PrintInfo(fmt.Sprintf("All tags: %v", allTags))
+		}
+		ui.PrintInfo(fmt.Sprintf("Matching attestation tags: %d", len(attestationTags)))
+	}
+
 	if len(attestationTags) == 0 {
 		// No remote attestations found - not an error
 		if !outputJSON {
-			ui.PrintWarning("No remote attestations found")
+			ui.PrintWarning(fmt.Sprintf("No remote attestations found with prefix: %s", attestationPrefix))
 		}
 		return nil
 	}

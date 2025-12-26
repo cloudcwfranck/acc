@@ -522,14 +522,29 @@ func publishAttestationToRegistry(imageRef string, attestation *Attestation, out
 
 	// 7. Tag attestation with image digest for referrers
 	// Use attestation tag: attestation-<image-digest>-<timestamp>
+	if attestation.Subject.ImageDigest == "" {
+		if !outputJSON {
+			ui.PrintWarning("Image digest not set - cannot create discoverable tag")
+		}
+		return nil
+	}
+
 	attestationTag := fmt.Sprintf("attestation-%s-%s",
 		attestation.Subject.ImageDigest[:12],
 		strings.ReplaceAll(attestation.Timestamp, ":", "-"))
+
+	if !outputJSON {
+		ui.PrintInfo(fmt.Sprintf("Tagging attestation as: %s", attestationTag))
+	}
 
 	if err := repo.Tag(ctx, attestationDesc, attestationTag); err != nil {
 		// Tag failure is non-fatal - attestation is already pushed
 		if !outputJSON {
 			ui.PrintWarning(fmt.Sprintf("Attestation pushed but tagging failed: %v", err))
+		}
+	} else {
+		if !outputJSON {
+			ui.PrintInfo(fmt.Sprintf("Attestation tagged successfully: %s", attestationTag))
 		}
 	}
 
