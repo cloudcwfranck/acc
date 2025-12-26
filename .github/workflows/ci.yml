@@ -55,7 +55,7 @@ jobs:
 
     - name: Upload Tier 0 logs on failure
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: tier0-logs
         path: /tmp/tier0-*.log
@@ -115,7 +115,7 @@ jobs:
 
     - name: Upload Tier 1 artifacts on failure
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: tier1-artifacts
         path: |
@@ -179,7 +179,7 @@ jobs:
 
     - name: Upload Tier 2 artifacts on failure
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: tier2-artifacts
         path: |
