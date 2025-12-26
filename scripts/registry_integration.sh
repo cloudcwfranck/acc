@@ -133,12 +133,16 @@ preflight_checks() {
 
     # Check if we have credentials in docker config
     if [ -f ~/.docker/config.json ]; then
-        if grep -q "ghcr.io" ~/.docker/config.json; then
+        # Check for ghcr.io in various formats (plain, https, or with path)
+        if grep -qE "(\"ghcr\.io\"|\"https://ghcr\.io\")" ~/.docker/config.json; then
             log_success "Found GHCR credentials in docker config"
         else
             if [ "$TIER2_REQUIRED" = "true" ]; then
                 log_error "No GHCR credentials found in ~/.docker/config.json"
                 log "This is a trusted event - authentication is required"
+                log "Searched for: ghcr.io or https://ghcr.io"
+                log "Config file contents (auths keys):"
+                jq -r '.auths | keys[]' ~/.docker/config.json 2>/dev/null || echo "  (could not parse config)"
                 log "Run: echo \$GHCR_TOKEN | docker login ghcr.io -u \$GHCR_USERNAME --password-stdin"
                 exit 1
             else
