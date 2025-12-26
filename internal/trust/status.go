@@ -395,9 +395,9 @@ func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
 
 	// Try different registry URL formats
 	registryFormats := []string{
-		registry,                           // e.g., "ghcr.io"
-		"https://" + registry,             // e.g., "https://ghcr.io"
-		"https://" + registry + "/v2/",    // e.g., "https://ghcr.io/v2/"
+		registry,                       // e.g., "ghcr.io"
+		"https://" + registry,          // e.g., "https://ghcr.io"
+		"https://" + registry + "/v2/", // e.g., "https://ghcr.io/v2/"
 	}
 
 	for _, regFormat := range registryFormats {
