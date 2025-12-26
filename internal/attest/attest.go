@@ -3,6 +3,7 @@ package attest
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -451,25 +452,40 @@ func publishAttestationToRegistry(imageRef string, attestation *Attestation, out
 	}
 
 	// Configure auth from Docker credentials
+	// Try multiple registry key formats that might be in Docker config
+	var cred auth.Credential
+	var credErr error
+
+	// Try different registry URL formats
+	registryFormats := []string{
+		registry,                           // e.g., "ghcr.io"
+		"https://" + registry,             // e.g., "https://ghcr.io"
+		"https://" + registry + "/v2/",    // e.g., "https://ghcr.io/v2/"
+	}
+
+	for _, regFormat := range registryFormats {
+		if c, err := loadDockerCredentials(regFormat); err == nil {
+			cred = c
+			credErr = nil
+			break
+		} else {
+			credErr = err
+		}
+	}
+
+	// Set up auth client with credentials if found
 	repo.Client = &auth.Client{
 		Client: retry.DefaultClient,
 		Cache:  auth.NewCache(),
 		Credential: auth.CredentialFunc(func(ctx context.Context, reg string) (auth.Credential, error) {
-			return auth.Credential{}, nil // Use docker config
+			if credErr != nil {
+				// No credentials found, return empty (might work for public repos or with other auth methods)
+				return auth.Credential{}, nil
+			}
+			return cred, nil
 		}),
 	}
 	repo.PlainHTTP = false
-
-	// Try to use Docker config for auth
-	if cred, err := loadDockerCredentials(registry); err == nil {
-		repo.Client = &auth.Client{
-			Client: retry.DefaultClient,
-			Cache:  auth.NewCache(),
-			Credential: auth.CredentialFunc(func(ctx context.Context, reg string) (auth.Credential, error) {
-				return cred, nil
-			}),
-		}
-	}
 
 	// 4. Create attestation descriptor
 	// Media type for acc attestations
@@ -566,8 +582,12 @@ func loadDockerCredentials(registry string) (auth.Credential, error) {
 
 	var config struct {
 		Auths map[string]struct {
-			Auth string `json:"auth"`
+			Auth     string `json:"auth"`
+			Username string `json:"username,omitempty"`
+			Password string `json:"password,omitempty"`
 		} `json:"auths"`
+		CredsStore  string            `json:"credsStore,omitempty"`
+		CredHelpers map[string]string `json:"credHelpers,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &config); err != nil {
@@ -575,11 +595,38 @@ func loadDockerCredentials(registry string) (auth.Credential, error) {
 	}
 
 	// Look for registry auth
-	if authEntry, ok := config.Auths[registry]; ok && authEntry.Auth != "" {
-		// Docker config stores base64(username:password)
-		// For now, return empty - oras-go will use docker credential helpers
-		return auth.Credential{}, nil
+	if authEntry, ok := config.Auths[registry]; ok {
+		// Try direct username/password first
+		if authEntry.Username != "" && authEntry.Password != "" {
+			return auth.Credential{
+				Username: authEntry.Username,
+				Password: authEntry.Password,
+			}, nil
+		}
+
+		// Try base64-encoded auth
+		if authEntry.Auth != "" {
+			decoded, err := base64.StdEncoding.DecodeString(authEntry.Auth)
+			if err != nil {
+				return auth.Credential{}, fmt.Errorf("failed to decode auth: %w", err)
+			}
+
+			// Auth is in format "username:password"
+			parts := strings.SplitN(string(decoded), ":", 2)
+			if len(parts) != 2 {
+				return auth.Credential{}, fmt.Errorf("invalid auth format")
+			}
+
+			return auth.Credential{
+				Username: parts[0],
+				Password: parts[1],
+			}, nil
+		}
 	}
+
+	// TODO: Support credential helpers via credsStore and credHelpers
+	// For now, if we can't find credentials, try to use external credential helpers
+	// by executing docker-credential-<helper> commands
 
 	return auth.Credential{}, fmt.Errorf("no credentials found for %s", registry)
 }
