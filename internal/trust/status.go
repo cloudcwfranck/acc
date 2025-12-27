@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/cloudcwfranck/acc/internal/ui"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/retry"
@@ -432,10 +433,16 @@ func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
 	}
 	attestationPrefix := fmt.Sprintf("attestation-%s-", digestPrefix)
 
+	if !outputJSON {
+		ui.PrintInfo(fmt.Sprintf("Looking for attestation tags with prefix: %s", attestationPrefix))
+	}
+
 	// List all tags
 	var attestationTags []string
+	var allTags []string
 	err = repo.Tags(ctx, "", func(tags []string) error {
 		for _, tag := range tags {
+			allTags = append(allTags, tag)
 			if strings.HasPrefix(tag, attestationPrefix) {
 				attestationTags = append(attestationTags, tag)
 			}
@@ -446,10 +453,18 @@ func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
 		return fmt.Errorf("failed to list tags: %w", err)
 	}
 
+	if !outputJSON {
+		ui.PrintInfo(fmt.Sprintf("Total tags found in repository: %d", len(allTags)))
+		if len(allTags) > 0 && len(allTags) <= 20 {
+			ui.PrintInfo(fmt.Sprintf("All tags: %v", allTags))
+		}
+		ui.PrintInfo(fmt.Sprintf("Matching attestation tags: %d", len(attestationTags)))
+	}
+
 	if len(attestationTags) == 0 {
 		// No remote attestations found - not an error
 		if !outputJSON {
-			ui.PrintWarning("No remote attestations found")
+			ui.PrintWarning(fmt.Sprintf("No remote attestations found with prefix: %s", attestationPrefix))
 		}
 		return nil
 	}
@@ -458,7 +473,7 @@ func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
 	fetchedCount := 0
 	for _, tag := range attestationTags {
 		// Resolve tag to descriptor
-		desc, err := repo.Resolve(ctx, tag)
+		manifestDesc, err := repo.Resolve(ctx, tag)
 		if err != nil {
 			if !outputJSON {
 				ui.PrintWarning(fmt.Sprintf("Failed to resolve tag %s: %v", tag, err))
@@ -466,19 +481,50 @@ func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
 			continue
 		}
 
-		// Fetch attestation content
-		reader, err := repo.Fetch(ctx, desc)
+		// Fetch the tagged content (which is now an OCI manifest)
+		manifestReader, err := repo.Fetch(ctx, manifestDesc)
 		if err != nil {
 			if !outputJSON {
-				ui.PrintWarning(fmt.Sprintf("Failed to fetch attestation %s: %v", tag, err))
+				ui.PrintWarning(fmt.Sprintf("Failed to fetch manifest %s: %v", tag, err))
 			}
 			continue
 		}
 
-		attestationData, err := io.ReadAll(reader)
-		reader.Close()
+		manifestData, err := io.ReadAll(manifestReader)
+		manifestReader.Close()
 		if err != nil {
 			continue
+		}
+
+		// Parse as OCI manifest to extract the attestation blob descriptor
+		var manifest ocispec.Manifest
+		var attestationData []byte
+
+		if err := json.Unmarshal(manifestData, &manifest); err == nil {
+			// This is an OCI manifest - extract the attestation blob from layers
+			if len(manifest.Layers) > 0 {
+				attestationDesc := manifest.Layers[0]
+				attestationReader, err := repo.Fetch(ctx, attestationDesc)
+				if err != nil {
+					if !outputJSON {
+						ui.PrintWarning(fmt.Sprintf("Failed to fetch attestation blob from manifest %s: %v", tag, err))
+					}
+					continue
+				}
+				attestationData, err = io.ReadAll(attestationReader)
+				attestationReader.Close()
+				if err != nil {
+					continue
+				}
+			} else {
+				if !outputJSON {
+					ui.PrintWarning(fmt.Sprintf("Manifest %s has no layers", tag))
+				}
+				continue
+			}
+		} else {
+			// Not a manifest, treat as raw attestation data (backward compatibility)
+			attestationData = manifestData
 		}
 
 		// 5. Cache attestation locally

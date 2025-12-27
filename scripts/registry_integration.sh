@@ -18,7 +18,9 @@ FAILED=0
 GHCR_REGISTRY="${GHCR_REGISTRY:-ghcr.io}"
 GHCR_REPO="${GHCR_REPO:-}"
 GHCR_USERNAME="${GHCR_USERNAME:-}"
+GHCR_TOKEN="${GHCR_TOKEN:-}"
 GITHUB_SHA="${GITHUB_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo 'local')}"
+TIER2_REQUIRED="${TIER2_REQUIRED:-false}"  # If true, fail instead of skip on missing config
 
 # Required tools
 REQUIRED_TOOLS=("docker" "opa" "jq" "syft")
@@ -93,9 +95,16 @@ preflight_checks() {
 
     # Check if GHCR_REPO is set
     if [ -z "$GHCR_REPO" ]; then
-        log_skip "GHCR_REPO not set - skipping registry integration tests"
-        log "Set GHCR_REPO to enable Tier 2 tests (format: 'OWNER/IMAGE', e.g., 'cloudcwfranck/acc')"
-        exit 0
+        if [ "$TIER2_REQUIRED" = "true" ]; then
+            log_error "GHCR_REPO is required but not set"
+            log "This is a trusted event (main branch, same-repo PR, or manual trigger)"
+            log "GHCR_REPO must be set in format: 'OWNER/IMAGE' (e.g., 'cloudcwfranck/acc')"
+            exit 1
+        else
+            log_skip "GHCR_REPO not set - skipping registry integration tests (forked PR or local run)"
+            log "Set GHCR_REPO to enable Tier 2 tests (format: 'OWNER/IMAGE', e.g., 'cloudcwfranck/acc')"
+            exit 0
+        fi
     fi
 
     # Validate GHCR_REPO format: must be exactly "OWNER/IMAGE" (one slash, two segments)
@@ -124,17 +133,35 @@ preflight_checks() {
 
     # Check if we have credentials in docker config
     if [ -f ~/.docker/config.json ]; then
-        if grep -q "ghcr.io" ~/.docker/config.json; then
+        # Check for ghcr.io in various formats (plain, https, or with path)
+        if grep -qE "(\"ghcr\.io\"|\"https://ghcr\.io\")" ~/.docker/config.json; then
             log_success "Found GHCR credentials in docker config"
         else
-            log_error "No GHCR credentials found in ~/.docker/config.json"
-            log "Run: echo \$GHCR_TOKEN | docker login ghcr.io -u \$GHCR_USERNAME --password-stdin"
-            exit 1
+            if [ "$TIER2_REQUIRED" = "true" ]; then
+                log_error "No GHCR credentials found in ~/.docker/config.json"
+                log "This is a trusted event - authentication is required"
+                log "Searched for: ghcr.io or https://ghcr.io"
+                log "Config file contents (auths keys):"
+                jq -r '.auths | keys[]' ~/.docker/config.json 2>/dev/null || echo "  (could not parse config)"
+                log "Run: echo \$GHCR_TOKEN | docker login ghcr.io -u \$GHCR_USERNAME --password-stdin"
+                exit 1
+            else
+                log_skip "No GHCR credentials - skipping registry tests (forked PR or local run)"
+                log "Run: echo \$GHCR_TOKEN | docker login ghcr.io -u \$GHCR_USERNAME --password-stdin"
+                exit 0
+            fi
         fi
     else
-        log_error "Docker config not found at ~/.docker/config.json"
-        log "Run: docker login ghcr.io"
-        exit 1
+        if [ "$TIER2_REQUIRED" = "true" ]; then
+            log_error "Docker config not found at ~/.docker/config.json"
+            log "This is a trusted event - authentication is required"
+            log "Run: docker login ghcr.io"
+            exit 1
+        else
+            log_skip "Docker config not found - skipping registry tests (forked PR or local run)"
+            log "Run: docker login ghcr.io"
+            exit 0
+        fi
     fi
 
     # Test authentication by attempting to authenticate to registry

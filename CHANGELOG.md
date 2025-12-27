@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **OCI Attestation Tagging**: Fixed remote attestation publishing to create OCI manifests for tagging. OCI registries cannot tag blobs directly - only manifests can be tagged. The attestation blob is now wrapped in an OCI manifest (with the blob as a layer), allowing it to be tagged with a discoverable name (`attestation-<digest>-<timestamp>`). This fixes the "not found" error when attempting to tag attestation blobs.
+- **OCI Attestation Fetching**: Fixed remote attestation fetching to extract attestation blobs from OCI manifests. When fetching tagged attestations, the code now parses the OCI manifest and extracts the actual attestation blob from the manifest's first layer, instead of treating the manifest JSON as the attestation. This fixes invalid attestation errors (validSchema=false, digestMatch=false) during remote verification.
 - **Docker Credential Authentication**: Fixed remote attestation publishing/fetching authentication by properly decoding base64-encoded credentials from `~/.docker/config.json`. Previously returned empty credentials causing 403 errors when publishing to GHCR.
 - **GHCR Repository Naming**: Fixed Tier 2 registry integration to use correct GHCR image naming convention (`ghcr.io/OWNER/IMAGE:TAG` with 2 path segments instead of 3). Added validation to enforce `GHCR_REPO` format as `OWNER/IMAGE`.
 - **Registry Authentication Validation**: Added pre-flight checks to validate Docker authentication before attempting registry operations, providing clear error messages when credentials are missing.

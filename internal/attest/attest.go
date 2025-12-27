@@ -520,16 +520,68 @@ func publishAttestationToRegistry(imageRef string, attestation *Attestation, out
 		return fmt.Errorf("failed to push attestation: %w", err)
 	}
 
-	// 7. Tag attestation with image digest for referrers
+	// 7. Create and push an OCI manifest that references the attestation
+	// This is required because tags can only point to manifests, not blobs
+	manifestContent := ocispec.Manifest{
+		MediaType: ocispec.MediaTypeImageManifest,
+		Config: ocispec.Descriptor{
+			MediaType: "application/vnd.oci.empty.v1+json",
+			Digest:    "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a", // Empty JSON object
+			Size:      2,
+		},
+		Layers: []ocispec.Descriptor{attestationDesc},
+		Annotations: map[string]string{
+			"org.opencontainers.image.created": attestation.Timestamp,
+			"acc.attestation.imageRef":         imageRef,
+			"acc.attestation.imageDigest":      attestation.Subject.ImageDigest,
+		},
+	}
+	manifestContent.SchemaVersion = 2
+
+	manifestJSON, err := json.Marshal(manifestContent)
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+
+	manifestDigestBytes := sha256.Sum256(manifestJSON)
+	manifestDigestStr := fmt.Sprintf("sha256:%x", manifestDigestBytes)
+
+	manifestDesc := ocispec.Descriptor{
+		MediaType: ocispec.MediaTypeImageManifest,
+		Digest:    digest.Digest(manifestDigestStr),
+		Size:      int64(len(manifestJSON)),
+	}
+
+	// Push the manifest
+	if err := repo.Push(ctx, manifestDesc, strings.NewReader(string(manifestJSON))); err != nil {
+		return fmt.Errorf("failed to push attestation manifest: %w", err)
+	}
+
+	// 8. Tag the manifest with image digest for discoverability
 	// Use attestation tag: attestation-<image-digest>-<timestamp>
+	if attestation.Subject.ImageDigest == "" {
+		if !outputJSON {
+			ui.PrintWarning("Image digest not set - cannot create discoverable tag")
+		}
+		return nil
+	}
+
 	attestationTag := fmt.Sprintf("attestation-%s-%s",
 		attestation.Subject.ImageDigest[:12],
 		strings.ReplaceAll(attestation.Timestamp, ":", "-"))
 
-	if err := repo.Tag(ctx, attestationDesc, attestationTag); err != nil {
+	if !outputJSON {
+		ui.PrintInfo(fmt.Sprintf("Tagging attestation manifest as: %s", attestationTag))
+	}
+
+	if err := repo.Tag(ctx, manifestDesc, attestationTag); err != nil {
 		// Tag failure is non-fatal - attestation is already pushed
 		if !outputJSON {
 			ui.PrintWarning(fmt.Sprintf("Attestation pushed but tagging failed: %v", err))
+		}
+	} else {
+		if !outputJSON {
+			ui.PrintInfo(fmt.Sprintf("Attestation tagged successfully: %s", attestationTag))
 		}
 	}
 
