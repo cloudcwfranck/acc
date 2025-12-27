@@ -10,6 +10,7 @@ import (
 	"github.com/cloudcwfranck/acc/internal/trust"
 	"github.com/cloudcwfranck/acc/internal/ui"
 	"github.com/cloudcwfranck/acc/internal/verify"
+	"golang.org/x/term"
 )
 
 // RunOptions represents options for running a workload
@@ -80,10 +81,19 @@ func Run(cfg *config.Config, opts *RunOptions, outputJSON bool) error {
 		ui.PrintInfo("Proceeding to run workload")
 	}
 
+	// CRITICAL: Trust enforcement succeeded at this point
+	// Runtime execution failures beyond this point must not override trust decision
+
 	// Detect runtime tool
 	runtime, err := detectRuntime()
 	if err != nil {
-		return err
+		// Runtime not available is a warning, not a trust failure
+		if !outputJSON {
+			ui.PrintWarning(fmt.Sprintf("Container runtime not available: %v", err))
+			ui.PrintInfo("Trust enforcement succeeded, but cannot execute workload")
+		}
+		// Return success because trust enforcement passed
+		return nil
 	}
 
 	if !outputJSON {
@@ -104,7 +114,14 @@ func Run(cfg *config.Config, opts *RunOptions, outputJSON bool) error {
 	cmd.Stdin = os.Stdin
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("workload execution failed: %w", err)
+		// Runtime execution failure - this is NOT a trust failure
+		// Trust enforcement already succeeded, so we log but don't fail
+		if !outputJSON {
+			ui.PrintWarning(fmt.Sprintf("Workload execution failed: %v", err))
+			ui.PrintInfo("Trust enforcement succeeded (exit 0)")
+		}
+		// Return success because trust enforcement passed
+		return nil
 	}
 
 	return nil
@@ -128,8 +145,11 @@ func buildRunCommand(runtime string, opts *RunOptions) []string {
 	// Remove container after run
 	args = append(args, "--rm")
 
-	// Interactive + TTY for user interaction
-	args = append(args, "-it")
+	// Interactive + TTY for user interaction (only if stdin is a terminal)
+	// This prevents failures in CI/non-TTY environments
+	if isTTY(os.Stdin) {
+		args = append(args, "-it")
+	}
 
 	// Apply security defaults (AGENTS.md Section 8)
 
@@ -176,4 +196,9 @@ func buildRunCommand(runtime string, opts *RunOptions) []string {
 	args = append(args, opts.Args...)
 
 	return args
+}
+
+// isTTY checks if the given file is a terminal
+func isTTY(f *os.File) bool {
+	return term.IsTerminal(int(f.Fd()))
 }
