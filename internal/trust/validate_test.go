@@ -15,14 +15,14 @@ func TestValidateAttestationWithResultsHash(t *testing.T) {
 	os.Chdir(tmpDir)
 
 	tests := []struct {
-		name                    string
-		attestation             map[string]interface{}
-		expectedDigest          string
-		expectedResultsHash     string
-		expectedValidSchema     bool
-		expectedDigestMatch     bool
+		name                     string
+		attestation              map[string]interface{}
+		expectedDigest           string
+		expectedResultsHash      string
+		expectedValidSchema      bool
+		expectedDigestMatch      bool
 		expectedResultsHashMatch bool
-		expectedReason          string
+		expectedReason           string
 	}{
 		{
 			name: "valid attestation with matching results hash",
@@ -38,12 +38,12 @@ func TestValidateAttestationWithResultsHash(t *testing.T) {
 					"verificationResultsHash": "sha256:def456",
 				},
 			},
-			expectedDigest:          "abc123",
-			expectedResultsHash:     "sha256:def456",
-			expectedValidSchema:     true,
-			expectedDigestMatch:     true,
+			expectedDigest:           "abc123",
+			expectedResultsHash:      "sha256:def456",
+			expectedValidSchema:      true,
+			expectedDigestMatch:      true,
 			expectedResultsHashMatch: true,
-			expectedReason:          "",
+			expectedReason:           "",
 		},
 		{
 			name: "attestation with mismatched results hash",
@@ -59,12 +59,12 @@ func TestValidateAttestationWithResultsHash(t *testing.T) {
 					"verificationResultsHash": "sha256:wrong",
 				},
 			},
-			expectedDigest:          "abc123",
-			expectedResultsHash:     "sha256:def456",
-			expectedValidSchema:     true,
-			expectedDigestMatch:     true,
+			expectedDigest:           "abc123",
+			expectedResultsHash:      "sha256:def456",
+			expectedValidSchema:      true,
+			expectedDigestMatch:      true,
 			expectedResultsHashMatch: false,
-			expectedReason:          "results hash mismatch",
+			expectedReason:           "results hash mismatch",
 		},
 		{
 			name: "attestation with missing results hash",
@@ -79,12 +79,12 @@ func TestValidateAttestationWithResultsHash(t *testing.T) {
 					"verificationStatus": "pass",
 				},
 			},
-			expectedDigest:          "abc123",
-			expectedResultsHash:     "sha256:def456",
-			expectedValidSchema:     true,
-			expectedDigestMatch:     true,
+			expectedDigest:           "abc123",
+			expectedResultsHash:      "sha256:def456",
+			expectedValidSchema:      true,
+			expectedDigestMatch:      true,
 			expectedResultsHashMatch: false,
-			expectedReason:          "missing results hash",
+			expectedReason:           "missing results hash",
 		},
 		{
 			name: "attestation with mismatched digest",
@@ -100,12 +100,12 @@ func TestValidateAttestationWithResultsHash(t *testing.T) {
 					"verificationResultsHash": "sha256:def456",
 				},
 			},
-			expectedDigest:          "abc123",
-			expectedResultsHash:     "sha256:def456",
-			expectedValidSchema:     true,
-			expectedDigestMatch:     false,
+			expectedDigest:           "abc123",
+			expectedResultsHash:      "sha256:def456",
+			expectedValidSchema:      true,
+			expectedDigestMatch:      false,
 			expectedResultsHashMatch: true,
-			expectedReason:          "digest mismatch",
+			expectedReason:           "digest mismatch",
 		},
 		{
 			name: "attestation with invalid schema (missing timestamp)",
@@ -120,12 +120,12 @@ func TestValidateAttestationWithResultsHash(t *testing.T) {
 					"verificationResultsHash": "sha256:def456",
 				},
 			},
-			expectedDigest:          "abc123",
-			expectedResultsHash:     "sha256:def456",
-			expectedValidSchema:     false,
-			expectedDigestMatch:     true,
+			expectedDigest:           "abc123",
+			expectedResultsHash:      "sha256:def456",
+			expectedValidSchema:      false,
+			expectedDigestMatch:      true,
 			expectedResultsHashMatch: true,
-			expectedReason:          "invalid schema",
+			expectedReason:           "invalid schema",
 		},
 	}
 
