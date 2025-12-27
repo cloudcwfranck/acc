@@ -3,7 +3,6 @@ package trust
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"sort"
 )
 
