@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/cloudcwfranck/acc/internal/ui"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/retry"
@@ -472,7 +473,7 @@ func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
 	fetchedCount := 0
 	for _, tag := range attestationTags {
 		// Resolve tag to descriptor
-		desc, err := repo.Resolve(ctx, tag)
+		manifestDesc, err := repo.Resolve(ctx, tag)
 		if err != nil {
 			if !outputJSON {
 				ui.PrintWarning(fmt.Sprintf("Failed to resolve tag %s: %v", tag, err))
@@ -480,19 +481,50 @@ func fetchRemoteAttestations(imageRef, digest string, outputJSON bool) error {
 			continue
 		}
 
-		// Fetch attestation content
-		reader, err := repo.Fetch(ctx, desc)
+		// Fetch the tagged content (which is now an OCI manifest)
+		manifestReader, err := repo.Fetch(ctx, manifestDesc)
 		if err != nil {
 			if !outputJSON {
-				ui.PrintWarning(fmt.Sprintf("Failed to fetch attestation %s: %v", tag, err))
+				ui.PrintWarning(fmt.Sprintf("Failed to fetch manifest %s: %v", tag, err))
 			}
 			continue
 		}
 
-		attestationData, err := io.ReadAll(reader)
-		reader.Close()
+		manifestData, err := io.ReadAll(manifestReader)
+		manifestReader.Close()
 		if err != nil {
 			continue
+		}
+
+		// Parse as OCI manifest to extract the attestation blob descriptor
+		var manifest ocispec.Manifest
+		var attestationData []byte
+
+		if err := json.Unmarshal(manifestData, &manifest); err == nil {
+			// This is an OCI manifest - extract the attestation blob from layers
+			if len(manifest.Layers) > 0 {
+				attestationDesc := manifest.Layers[0]
+				attestationReader, err := repo.Fetch(ctx, attestationDesc)
+				if err != nil {
+					if !outputJSON {
+						ui.PrintWarning(fmt.Sprintf("Failed to fetch attestation blob from manifest %s: %v", tag, err))
+					}
+					continue
+				}
+				attestationData, err = io.ReadAll(attestationReader)
+				attestationReader.Close()
+				if err != nil {
+					continue
+				}
+			} else {
+				if !outputJSON {
+					ui.PrintWarning(fmt.Sprintf("Manifest %s has no layers", tag))
+				}
+				continue
+			}
+		} else {
+			// Not a manifest, treat as raw attestation data (backward compatibility)
+			attestationData = manifestData
 		}
 
 		// 5. Cache attestation locally
