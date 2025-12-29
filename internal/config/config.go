@@ -14,6 +14,7 @@ type Config struct {
 	Build        BuildConfig          `mapstructure:"build"`
 	Registry     RegistryConfig       `mapstructure:"registry"`
 	Policy       PolicyConfig         `mapstructure:"policy"`
+	Trust        TrustConfig          `mapstructure:"trust"` // v0.3.3: trust requirements
 	Signing      SigningConfig        `mapstructure:"signing"`
 	SBOM         SBOMConfig           `mapstructure:"sbom"`
 	Environments map[string]EnvConfig `mapstructure:"environments"`
@@ -49,6 +50,22 @@ type SigningConfig struct {
 
 type SBOMConfig struct {
 	Format string `mapstructure:"format"` // spdx|cyclonedx
+}
+
+// TrustConfig represents trust/attestation requirements (v0.3.3)
+type TrustConfig struct {
+	RequireAttestations *AttestationRequirements `mapstructure:"requireAttestations"`
+}
+
+// AttestationRequirements defines thresholds for attestation validity
+type AttestationRequirements struct {
+	Enabled                 bool     `mapstructure:"enabled"`                 // default: false
+	MinCount                int      `mapstructure:"minCount"`                // minimum valid attestations required
+	Sources                 []string `mapstructure:"sources"`                 // allowed: ["local", "remote"]
+	RequireDigestMatch      bool     `mapstructure:"requireDigestMatch"`      // default: true
+	RequireValidSchema      bool     `mapstructure:"requireValidSchema"`      // default: true
+	RequireResultsHashMatch bool     `mapstructure:"requireResultsHashMatch"` // default: true (v0.3.3)
+	Mode                    string   `mapstructure:"mode"`                    // enforce|warn (default: enforce)
 }
 
 // Load loads configuration following discovery order (AGENTS.md Section 5.1)

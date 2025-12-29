@@ -854,14 +854,23 @@ set -e
 log "Run with enforcement (HAS attestation) output:"
 echo "$run_enforce_ok_output" | head -20 | tee -a "$LOGFILE"
 
-# Should succeed (exit 0) or not be implemented
+# MUST succeed (exit 0) when trust enforcement passes
+# Exit 0 means trust gates passed, regardless of runtime execution success
 if [ $run_enforce_ok_exit -eq 0 ]; then
-    log_success "acc run (enforcement + HAS attestation): exit 0 (allowed to run)"
+    log_success "acc run (enforcement + HAS attestation): exit 0 (trust enforcement succeeded)"
+
+    # Verify trust enforcement succeeded (should see verification messages)
+    if echo "$run_enforce_ok_output" | grep -qi "verification passed"; then
+        log_success "Trust enforcement messages present in output"
+    fi
 elif [ $run_enforce_ok_exit -eq 1 ]; then
-    log "⚠️  acc run (enforcement + HAS attestation): exit 1 (unexpected - should allow run)"
+    log_error "acc run (enforcement + HAS attestation): exit 1 (trust enforcement should succeed!)"
     log "Output: $run_enforce_ok_output"
+    exit 1
 else
-    log "⚠️  acc run (enforcement + HAS attestation): exit $run_enforce_ok_exit"
+    log_error "acc run (enforcement + HAS attestation): exit $run_enforce_ok_exit (expected exit 0)"
+    log "Output: $run_enforce_ok_output"
+    exit 1
 fi
 
 # Test 10.3: Run with enforcement enabled + image NO attestation (should block)
@@ -907,6 +916,38 @@ elif [ $run_enforce_unknown_exit -eq 0 ]; then
     log_error "acc run (enforcement + unknown): exit 0 (should have blocked!)"
 else
     log "⚠️  acc run (enforcement + unknown): exit $run_enforce_unknown_exit"
+fi
+
+# Test 10.5: Regression test for TTY handling in non-interactive environments
+log "Test 10.5: Non-TTY environment (regression test for CI compatibility)"
+
+# Run in non-TTY environment by explicitly closing stdin
+# This simulates CI/non-interactive execution
+set +e
+run_notty_output=$($ACC_BIN run demo-app:ok -- echo "test" </dev/null 2>&1)
+run_notty_exit=$?
+set -e
+
+log "Run in non-TTY environment output:"
+echo "$run_notty_output" | head -20 | tee -a "$LOGFILE"
+
+# Should succeed (exit 0) when trust passes, even in non-TTY
+if [ $run_notty_exit -eq 0 ]; then
+    log_success "acc run (non-TTY): exit 0 (trust enforcement succeeded)"
+
+    # Verify we didn't try to use -it flags inappropriately
+    if echo "$run_notty_output" | grep -qi "the input device is not a TTY"; then
+        log_error "Docker -it flags incorrectly used in non-TTY environment"
+        exit 1
+    else
+        log_success "Non-TTY environment handled correctly (no TTY errors)"
+    fi
+elif [ $run_notty_exit -eq 1 ]; then
+    log_error "acc run (non-TTY): exit 1 (trust enforcement should succeed!)"
+    log "Output: $run_notty_output"
+    exit 1
+else
+    log "⚠️  acc run (non-TTY): exit $run_notty_exit"
 fi
 
 # ============================================================================
