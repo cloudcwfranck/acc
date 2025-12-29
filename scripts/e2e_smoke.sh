@@ -867,9 +867,17 @@ fi
 # Test 10.3: Run with enforcement enabled + policy PASS but NO attestation (should block)
 log "Test 10.3: Policy PASS + NO attestation with enforcement (should block)"
 
-# Build a non-root image (policy will pass) but don't attest it
+# Build a NEW non-root image (policy will pass) with a different digest than demo-app:ok
+# CRITICAL: Must be a new build, not a tag, so it has a different digest (and no attestation)
 log "Building demo-app:ok-noattest (non-root, policy should pass)"
-docker tag demo-app:ok demo-app:ok-noattest
+cat > Dockerfile.noattest <<'EOF'
+FROM alpine:3.19
+USER 1000:1000
+# Add a unique marker to ensure different digest from demo-app:ok
+RUN echo "no-attestation-test" > /tmp/marker
+CMD ["sh", "-c", "echo 'Hello from non-root user (no attestation)'"]
+EOF
+docker build -t demo-app:ok-noattest -f Dockerfile.noattest . > /dev/null 2>&1
 
 # Verify it (should pass policy)
 log "Verifying demo-app:ok-noattest (policy should pass)"

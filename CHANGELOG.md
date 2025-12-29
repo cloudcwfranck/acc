@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Improved
 
 - **CI Changelog Check**: Enhanced changelog check to run on both pull requests and pushes to `main`/`claude/*` branches. Now detects code changes and requires CHANGELOG.md updates early in development, not just at PR time. Intelligently skips check when only docs/tests/CI configs change. This catches missing changelog entries sooner and provides clearer feedback.
-- **Attestation Enforcement Testing**: Added Test 10.3 to E2E suite specifically testing the "policy passes but no attestation" scenario. This critical security test ensures enforcement correctly blocks images that pass policy checks but lack attestations, preventing a bypass where policy-compliant images could run without attestation. Updated Test 10.4-10.6 numbering accordingly.
+- **Attestation Enforcement Testing**: Added Test 10.3 to E2E suite specifically testing the "policy passes but no attestation" scenario. Test builds a new image (not a tag) to ensure unique digest without attestations. This critical security test ensures enforcement correctly blocks images that pass policy checks but lack attestations, preventing a bypass where policy-compliant images could run without attestation. Updated Test 10.4-10.6 numbering accordingly.
 
 ### Added - v0.3.2: Remote Attestation Publishing and Fetching
 
