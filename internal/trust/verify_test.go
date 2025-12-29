@@ -267,3 +267,147 @@ func TestAttestationDetailJSONFields(t *testing.T) {
 		t.Errorf("digestMatch should be bool true, got %v", parsed["digestMatch"])
 	}
 }
+
+func TestNormalizeDigest(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "plain hex digest",
+			input:    "abc123def456",
+			expected: "abc123def456",
+		},
+		{
+			name:     "digest with sha256: prefix",
+			input:    "sha256:abc123def456",
+			expected: "abc123def456",
+		},
+		{
+			name:     "digest with uppercase SHA256: prefix",
+			input:    "SHA256:ABC123DEF456",
+			expected: "abc123def456",
+		},
+		{
+			name:     "digest with whitespace",
+			input:    "  abc123def456  ",
+			expected: "abc123def456",
+		},
+		{
+			name:     "digest with prefix and whitespace",
+			input:    "  sha256:abc123def456  ",
+			expected: "abc123def456",
+		},
+		{
+			name:     "uppercase hex without prefix",
+			input:    "ABC123DEF456",
+			expected: "abc123def456",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeDigest(tt.input)
+			if result != tt.expected {
+				t.Errorf("normalizeDigest(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDigestMatchingWithNormalization(t *testing.T) {
+	// Create a temporary directory for test attestations
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name           string
+		attestDigest   string
+		expectedDigest string
+		shouldMatch    bool
+		description    string
+	}{
+		{
+			name:           "exact match without prefix",
+			attestDigest:   "abc123def456",
+			expectedDigest: "abc123def456",
+			shouldMatch:    true,
+			description:    "both plain hex",
+		},
+		{
+			name:           "attestation has prefix, expected doesn't",
+			attestDigest:   "sha256:abc123def456",
+			expectedDigest: "abc123def456",
+			shouldMatch:    true,
+			description:    "normalization strips prefix from attestation",
+		},
+		{
+			name:           "expected has prefix, attestation doesn't",
+			attestDigest:   "abc123def456",
+			expectedDigest: "sha256:abc123def456",
+			shouldMatch:    true,
+			description:    "normalization strips prefix from expected",
+		},
+		{
+			name:           "both have prefix",
+			attestDigest:   "sha256:abc123def456",
+			expectedDigest: "sha256:abc123def456",
+			shouldMatch:    true,
+			description:    "normalization strips both prefixes",
+		},
+		{
+			name:           "different hex values",
+			attestDigest:   "abc123",
+			expectedDigest: "def456",
+			shouldMatch:    false,
+			description:    "different digests should not match",
+		},
+		{
+			name:           "case insensitive match",
+			attestDigest:   "ABC123DEF456",
+			expectedDigest: "abc123def456",
+			shouldMatch:    true,
+			description:    "normalization handles case differences",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create attestation with the specified digest
+			attest := map[string]interface{}{
+				"schemaVersion": "v0.1",
+				"timestamp":     "2025-01-01T12:00:00Z",
+				"subject": map[string]interface{}{
+					"imageRef":    "test:latest",
+					"imageDigest": tt.attestDigest,
+				},
+				"evidence": map[string]interface{}{
+					"verificationStatus":      "pass",
+					"verificationResultsHash": "sha256:xyz789",
+				},
+			}
+
+			attestPath := filepath.Join(tmpDir, tt.name+".json")
+			data, _ := json.MarshalIndent(attest, "", "  ")
+			if err := os.WriteFile(attestPath, data, 0644); err != nil {
+				t.Fatalf("Failed to write test attestation: %v", err)
+			}
+
+			detail := validateAttestation(attestPath, tt.expectedDigest)
+
+			if tt.shouldMatch && !detail.DigestMatch {
+				t.Errorf("%s: expected DigestMatch=true, got false\nattest=%q, expected=%q",
+					tt.description, tt.attestDigest, tt.expectedDigest)
+			}
+			if !tt.shouldMatch && detail.DigestMatch {
+				t.Errorf("%s: expected DigestMatch=false, got true\nattest=%q, expected=%q",
+					tt.description, tt.attestDigest, tt.expectedDigest)
+			}
+		})
+	}
+}
