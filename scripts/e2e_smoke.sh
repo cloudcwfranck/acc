@@ -914,7 +914,7 @@ if [ $run_enforce_noattest_exit -eq 1 ]; then
     log_success "acc run (policy PASS + NO attestation): exit 1 (blocked as expected)"
 
     # Check for explicit attestation requirement message
-    if echo "$run_enforce_noattest_output" | grep -qi "attestation" && (echo "$run_enforce_noattest_output" | grep -qi "required" || echo "$run_enforce_noattest_output" | grep -qi "missing"); then
+    if echo "$run_enforce_noattest_output" | grep -qi "attestation" && (echo "$run_enforce_noattest_output" | grep -qi "require" || echo "$run_enforce_noattest_output" | grep -qi "missing"); then
         log_success "Error message explicitly mentions attestation is required/missing"
     else
         log_error "Error message should explicitly mention attestation requirement"
