@@ -22,6 +22,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI Changelog Check**: Enhanced changelog check to run on both pull requests and pushes to `main`/`claude/*` branches. Now detects code changes and requires CHANGELOG.md updates early in development, not just at PR time. Intelligently skips check when only docs/tests/CI configs change. This catches missing changelog entries sooner and provides clearer feedback.
 - **Attestation Enforcement Testing**: Added Test 10.3 to E2E suite specifically testing the "policy passes but no attestation" scenario. Test builds a new image (not a tag) to ensure unique digest without attestations. This critical security test ensures enforcement correctly blocks images that pass policy checks but lack attestations, preventing a bypass where policy-compliant images could run without attestation. Updated Test 10.4-10.6 numbering accordingly.
 
+### Added - v0.3.3: Signed Attestation Envelopes with Deterministic Canonicalization
+
+**Summary**: Attestations are now cryptographically signed using Ed25519 signatures with RFC 8785 JSON Canonicalization Scheme (JCS) for deterministic signature stability across machines. This provides attestation integrity verification while maintaining full backward compatibility with legacy attestations.
+
+**What's New:**
+
+- ✅ **Signed Envelopes** - New attestations include cryptographic signatures in envelope format
+- ✅ **Deterministic Canonicalization** - RFC 8785 JCS ensures stable signatures across machines and Go versions
+- ✅ **Ed25519 Signatures** - Industry-standard elliptic curve signatures for attestation integrity
+- ✅ **Deterministic Key IDs** - Key identifiers derived from public keys using `ed25519:<base32(sha256(pubkey))[:26]>`
+- ✅ **Local-First Key Management** - Keys stored in `.acc/keys/ed25519.key` with 0600 permissions
+- ✅ **CI-Friendly Overrides** - Environment variables `ACC_SIGNING_KEY` and `ACC_SIGNING_KEY_FILE` for CI/automation
+- ✅ **Automatic Key Generation** - New keys generated automatically when creating first attestation
+- ✅ **Backward Compatible Verification** - Legacy attestations (v0.1/v0.3.2) continue to verify without signatures
+- ✅ **Envelope Format** - Attestations wrapped in `{"attestation": {...}, "envelope": {...}}` structure
+
+**Envelope Format:**
+```json
+{
+  "attestation": {
+    "schemaVersion": "v0.1",
+    "timestamp": "2026-01-03T...",
+    "subject": {...},
+    "evidence": {...}
+  },
+  "envelope": {
+    "version": "v0.3.3",
+    "alg": "ed25519",
+    "keyId": "ed25519:abc123...",
+    "publicKey": "<base64>",
+    "canon": "jcs",
+    "payloadHash": "sha256:<hex>",
+    "signature": "<base64>"
+  }
+}
+```
+
+**Key Management:**
+
+Key resolution order:
+1. `ACC_SIGNING_KEY` environment variable (base64-encoded 64-byte ed25519 private key)
+2. `ACC_SIGNING_KEY_FILE` environment variable (path to key file)
+3. `.acc/keys/ed25519.key` in project root (auto-generated if missing)
+
+**Verification:**
+
+- Legacy attestations (no envelope): Validated by schema and digest match (existing behavior)
+- Envelope attestations: Validated by signature verification + schema + digest match
+- Signature verification checks:
+  - Ed25519 algorithm
+  - JCS canonicalization
+  - KeyId matches public key
+  - Payload hash matches canonical attestation
+  - Signature verifies with embedded public key
+
+**Technical Details:**
+- **Canonicalization**: RFC 8785 JCS via `github.com/gowebpki/jcs`
+- **KeyId Derivation**: `ed25519:<lowercase_base32_no_padding(sha256(pubkey))[:26]>`
+- **Signature Algorithm**: Ed25519 (crypto/ed25519)
+- **Key Size**: 64 bytes private, 32 bytes public
+- **Key Storage**: Raw bytes with 0600 permissions
+
+**Files Modified:**
+- `internal/attest/attest.go` - Updated to create signed envelopes
+- `internal/trust/verify.go` - Updated to verify both legacy and envelope formats
+- `internal/crypto/` - New package with `jcs.go`, `keyid.go`, `keys.go`
+
+**Backward Compatibility Guarantee:**
+- Existing attestations continue to verify without modification
+- Verification output schema unchanged (VerifyResult, AttestationDetail)
+- Exit codes unchanged (0=verified, 1=unverified, 2=unknown)
+- Attestation discovery layout unchanged
+- Remote fetch remains optional and non-blocking
+
 ### Added - v0.3.2: Remote Attestation Publishing and Fetching
 
 **Summary**: Remote attestation publishing and fetching via OCI registries enables attestation workflows to work across machines and CI runners. Attestations are published as OCI artifacts to container registries and fetched/cached locally on demand.

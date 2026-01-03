@@ -220,13 +220,18 @@ jobs:
           BASE_REF="origin/${{ github.base_ref }}"
           CHANGE_RANGE="$BASE_REF...HEAD"
         else
-          # For pushes, compare against previous commit
-          # Use main as fallback if we can't determine previous commit
-          if [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
-            CHANGE_RANGE="${{ github.event.before }}...HEAD"
+          # For pushes to feature branches (claude/*), compare entire branch against main
+          # For pushes to main, compare against previous commit
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            # Main branch: compare against previous commit
+            if [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              CHANGE_RANGE="${{ github.event.before }}...HEAD"
+            else
+              CHANGE_RANGE="HEAD~1...HEAD"
+            fi
           else
-            # First push to branch - compare to main
-            CHANGE_RANGE="origin/main...HEAD" || CHANGE_RANGE="HEAD~1...HEAD"
+            # Feature branch: compare entire branch against main
+            CHANGE_RANGE="origin/main...HEAD"
           fi
         fi
 

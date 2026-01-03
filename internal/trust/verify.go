@@ -1,12 +1,16 @@
 package trust
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/cloudcwfranck/acc/internal/crypto"
 	"github.com/cloudcwfranck/acc/internal/ui"
 )
 
@@ -114,6 +118,7 @@ func VerifyAttestations(imageRef string, remote, outputJSON bool) (*VerifyResult
 }
 
 // validateAttestation validates a single attestation file
+// Supports both legacy (v0.1) and envelope (v0.3.3) formats
 func validateAttestation(path, expectedDigest string) AttestationDetail {
 	detail := AttestationDetail{
 		Path:        path,
@@ -127,13 +132,39 @@ func validateAttestation(path, expectedDigest string) AttestationDetail {
 		return detail
 	}
 
-	// Parse JSON
-	var attest map[string]interface{}
-	if err := json.Unmarshal(data, &attest); err != nil {
+	// Parse JSON to detect format
+	var topLevel map[string]interface{}
+	if err := json.Unmarshal(data, &topLevel); err != nil {
 		return detail
 	}
 
-	// Extract fields
+	// Check if this is envelope format (has "attestation" and "envelope" fields)
+	var attest map[string]interface{}
+	var envelope map[string]interface{}
+
+	if attestField, hasAttestation := topLevel["attestation"]; hasAttestation {
+		if envelopeField, hasEnvelope := topLevel["envelope"]; hasEnvelope {
+			// v0.3.3 envelope format
+			if attestMap, ok := attestField.(map[string]interface{}); ok {
+				attest = attestMap
+			} else {
+				return detail
+			}
+			if envMap, ok := envelopeField.(map[string]interface{}); ok {
+				envelope = envMap
+			} else {
+				return detail
+			}
+		} else {
+			// Has "attestation" but no "envelope" - invalid
+			return detail
+		}
+	} else {
+		// Legacy format - top level IS the attestation
+		attest = topLevel
+	}
+
+	// Extract fields from attestation object
 	if timestamp, ok := attest["timestamp"].(string); ok {
 		detail.Timestamp = timestamp
 	}
@@ -147,7 +178,7 @@ func validateAttestation(path, expectedDigest string) AttestationDetail {
 		}
 	}
 
-	// Validate schema (basic check for required fields)
+	// Validate schema (basic check for required fields in attestation object)
 	requiredFields := []string{"schemaVersion", "timestamp", "subject", "evidence"}
 	detail.ValidSchema = true
 	for _, field := range requiredFields {
@@ -165,7 +196,79 @@ func validateAttestation(path, expectedDigest string) AttestationDetail {
 		}
 	}
 
+	// If envelope exists, verify signature
+	if envelope != nil {
+		if !verifyEnvelopeSignature(attest, envelope) {
+			// Signature verification failed - mark as invalid
+			detail.ValidSchema = false
+			return detail
+		}
+		// Signature verified - attestation is valid
+	}
+
 	return detail
+}
+
+// verifyEnvelopeSignature verifies the envelope signature for v0.3.3 attestations
+func verifyEnvelopeSignature(attestation, envelope map[string]interface{}) bool {
+	// Extract envelope fields
+	alg, _ := envelope["alg"].(string)
+	keyID, _ := envelope["keyId"].(string)
+	publicKeyB64, _ := envelope["publicKey"].(string)
+	canon, _ := envelope["canon"].(string)
+	payloadHash, _ := envelope["payloadHash"].(string)
+	signatureB64, _ := envelope["signature"].(string)
+
+	// Validate required fields
+	if alg != "ed25519" {
+		return false
+	}
+	if canon != "jcs" {
+		return false
+	}
+	if publicKeyB64 == "" || signatureB64 == "" || payloadHash == "" || keyID == "" {
+		return false
+	}
+
+	// Decode public key
+	publicKeyBytes, err := base64.StdEncoding.DecodeString(publicKeyB64)
+	if err != nil || len(publicKeyBytes) != ed25519.PublicKeySize {
+		return false
+	}
+	publicKey := ed25519.PublicKey(publicKeyBytes)
+
+	// Verify keyId matches public key
+	expectedKeyID := crypto.KeyIDFromPublicKeyEd25519(publicKey)
+	if keyID != expectedKeyID {
+		return false
+	}
+
+	// Canonicalize attestation object
+	canonicalPayload, err := crypto.CanonicalizeJCS(attestation)
+	if err != nil {
+		return false
+	}
+
+	// Verify payload hash
+	payloadHashBytes := sha256.Sum256(canonicalPayload)
+	expectedPayloadHash := fmt.Sprintf("sha256:%x", payloadHashBytes)
+	if payloadHash != expectedPayloadHash {
+		return false
+	}
+
+	// Decode signature
+	signatureBytes, err := base64.StdEncoding.DecodeString(signatureB64)
+	if err != nil || len(signatureBytes) != ed25519.SignatureSize {
+		return false
+	}
+
+	// Verify signature
+	if !ed25519.Verify(publicKey, canonicalPayload, signatureBytes) {
+		return false
+	}
+
+	// All checks passed
+	return true
 }
 
 // normalizeDigest normalizes a digest string for comparison
