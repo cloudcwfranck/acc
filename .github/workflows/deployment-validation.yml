@@ -99,11 +99,16 @@ jobs:
 
           # List all available assets for debugging
           echo "📦 Available assets:"
-          echo "$RELEASE_JSON" | jq -r '.assets[].name' || echo "  (none)"
+          ASSET_LIST=$(echo "$RELEASE_JSON" | jq -r '.assets // [] | .[].name // empty' 2>/dev/null)
+          if [ -z "$ASSET_LIST" ]; then
+            echo "  (none yet)"
+          else
+            echo "$ASSET_LIST"
+          fi
           echo ""
 
           # Find the asset matching our pattern
-          DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ARCHIVE_PATTERN\") | .browser_download_url")
+          DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r ".assets // [] | .[] | select(.name == \"$ARCHIVE_PATTERN\") | .browser_download_url" 2>/dev/null)
 
           if [ -n "$DOWNLOAD_URL" ] && [ "$DOWNLOAD_URL" != "null" ]; then
             echo "✅ Found asset: $ARCHIVE_PATTERN"
@@ -136,7 +141,7 @@ jobs:
               echo "❌ Asset $ARCHIVE_PATTERN not found after $MAX_RETRIES attempts"
               echo ""
               echo "Available assets:"
-              echo "$RELEASE_JSON" | jq -r '.assets[].name'
+              echo "$RELEASE_JSON" | jq -r '.assets // [] | .[].name // empty' 2>/dev/null || echo "  (none)"
               exit 1
             fi
           fi
@@ -210,13 +215,13 @@ jobs:
         cd "$WORKDIR"
         echo "Working in: $WORKDIR"
 
-        # Initialize a test project
+        # Initialize a test project in the current directory
         acc init test-project || {
           echo "❌ 'acc init' failed"
           exit 1
         }
         echo "✅ 'acc init' succeeded"
-        cd test-project
+        # Note: acc init initializes the current directory, doesn't create a subdirectory
 
         # Create a simple Dockerfile for testing
         cat > Dockerfile <<'EOF'
