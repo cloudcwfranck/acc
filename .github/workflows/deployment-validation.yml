@@ -230,12 +230,12 @@ jobs:
         CMD ["echo", "Hello from acc deployment test"]
         EOF
 
-        # Build demo image
-        docker build -t demo-app:deployment-test . || {
-          echo "❌ Docker build failed"
+        # Build demo image using acc build (generates SBOM automatically)
+        acc build -t demo-app:deployment-test . || {
+          echo "❌ 'acc build' failed"
           exit 1
         }
-        echo "✅ Docker build succeeded"
+        echo "✅ 'acc build' succeeded"
 
         # Verify the image
         acc verify demo-app:deployment-test || {
