@@ -60,7 +60,7 @@ jobs:
 
       - name: Upload demo.cast as artifact
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: demo-recording
           path: demo/demo.cast
