@@ -1,0 +1,261 @@
+name: Deployment Validation
+
+# Validates released artifacts after a GitHub Release is published
+# Ensures the actual binaries users install work correctly
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to validate (e.g., v0.3.3)'
+        required: true
+        type: string
+
+jobs:
+  validate-released-binary:
+    name: Validate Released Binary
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            asset_name: acc-linux-amd64
+          - os: macos-latest
+            asset_name: acc-darwin-amd64
+
+    steps:
+    - name: Determine release tag
+      id: release_tag
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          TAG="${{ github.event.inputs.tag }}"
+        else
+          TAG="${{ github.event.release.tag_name }}"
+        fi
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        echo "Validating release: $TAG"
+
+    - name: Download released binary
+      run: |
+        TAG="${{ steps.release_tag.outputs.tag }}"
+        ASSET_NAME="${{ matrix.asset_name }}"
+
+        echo "Downloading $ASSET_NAME from release $TAG..."
+
+        # Download the release asset
+        REPO="${{ github.repository }}"
+        DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
+
+        mkdir -p ./bin
+        curl -L -f -o "./bin/acc" "$DOWNLOAD_URL" || {
+          echo "❌ Failed to download release asset"
+          echo "URL: $DOWNLOAD_URL"
+          exit 1
+        }
+
+        chmod +x ./bin/acc
+        echo "$PWD/bin" >> $GITHUB_PATH
+
+    - name: Validate binary version
+      run: |
+        TAG="${{ steps.release_tag.outputs.tag }}"
+
+        # Run version command
+        VERSION_OUTPUT=$(./bin/acc version 2>&1 || echo "")
+        echo "Version output: $VERSION_OUTPUT"
+
+        # Assert version contains the release tag (strip leading 'v' if present)
+        TAG_NUMBER="${TAG#v}"
+        if echo "$VERSION_OUTPUT" | grep -q "$TAG_NUMBER"; then
+          echo "✅ Version matches release tag: $TAG_NUMBER"
+        else
+          echo "❌ Version does not match release tag"
+          echo "Expected: $TAG_NUMBER"
+          echo "Got: $VERSION_OUTPUT"
+          exit 1
+        fi
+
+    - name: Validate help command
+      run: |
+        # Basic sanity check that help works
+        ./bin/acc help > /dev/null 2>&1 || {
+          echo "❌ 'acc help' failed"
+          exit 1
+        }
+        echo "✅ 'acc help' works"
+
+    - name: Set up Docker (Linux only)
+      if: runner.os == 'Linux'
+      run: |
+        # Docker is pre-installed on GitHub Actions Ubuntu runners
+        docker --version
+
+    - name: Set up Docker (macOS only)
+      if: runner.os == 'macOS'
+      run: |
+        # Install Docker on macOS
+        brew install --cask docker
+        # Wait for Docker to start
+        for i in {1..30}; do
+          if docker info > /dev/null 2>&1; then
+            echo "Docker is running"
+            break
+          fi
+          echo "Waiting for Docker to start... ($i/30)"
+          sleep 2
+        done
+        docker --version
+
+    - name: Run deployment smoke test
+      if: runner.os == 'Linux'  # Only run full test on Linux for speed
+      run: |
+        # Create temp working directory
+        WORKDIR=$(mktemp -d)
+        cd "$WORKDIR"
+        echo "Working in: $WORKDIR"
+
+        # Initialize a test project
+        acc init test-project || {
+          echo "❌ 'acc init' failed"
+          exit 1
+        }
+        cd test-project
+
+        # Create a simple Dockerfile for testing
+        cat > Dockerfile <<'EOF'
+        FROM alpine:3.19
+        USER 1000:1000
+        CMD ["echo", "Hello from acc deployment test"]
+        EOF
+
+        # Build demo image
+        docker build -t demo-app:deployment-test . || {
+          echo "❌ Docker build failed"
+          exit 1
+        }
+
+        # Verify the image
+        acc verify demo-app:deployment-test || {
+          echo "❌ 'acc verify' failed"
+          exit 1
+        }
+        echo "✅ 'acc verify' passed"
+
+        # Attest the image
+        acc attest demo-app:deployment-test || {
+          echo "❌ 'acc attest' failed"
+          exit 1
+        }
+        echo "✅ 'acc attest' succeeded"
+
+        # Verify attestation exists
+        acc trust verify demo-app:deployment-test || {
+          echo "❌ 'acc trust verify' failed"
+          exit 1
+        }
+        echo "✅ 'acc trust verify' passed"
+
+        # Non-TTY regression test: Run workload in CI (non-TTY environment)
+        # This must succeed without "the input device is not a TTY" error
+        acc run demo-app:deployment-test -- echo "deployment test" || {
+          echo "❌ 'acc run' failed in non-TTY environment"
+          exit 1
+        }
+        echo "✅ 'acc run' succeeded in non-TTY environment"
+
+        # Cleanup
+        cd /
+        rm -rf "$WORKDIR"
+
+        echo "✅ All deployment smoke tests passed"
+
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-validation-logs-${{ matrix.os }}
+        path: |
+          /tmp/acc-*.log
+          ~/.acc/state/
+        retention-days: 7
+        if-no-files-found: ignore
+
+  validate-registry-artifacts:
+    name: Validate GHCR Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only run if the repository has GHCR publishing enabled
+    # Skip on forks or if GHCR is not configured
+    if: github.repository_owner != '' && github.event_name == 'release'
+
+    steps:
+    - name: Determine release tag
+      id: release_tag
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          TAG="${{ github.event.inputs.tag }}"
+        else
+          TAG="${{ github.event.release.tag_name }}"
+        fi
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        echo "Validating GHCR artifacts for: $TAG"
+
+    - name: Validate GHCR image (if published)
+      continue-on-error: true  # Don't fail if GHCR publishing is not set up
+      run: |
+        TAG="${{ steps.release_tag.outputs.tag }}"
+        REPO="${{ github.repository }}"
+        OWNER="${{ github.repository_owner }}"
+
+        # Construct GHCR image reference
+        GHCR_IMAGE="ghcr.io/${REPO}:${TAG}"
+
+        echo "Checking if GHCR image exists: $GHCR_IMAGE"
+
+        # Try to pull the image (may fail if not published to GHCR)
+        if docker pull "$GHCR_IMAGE" 2>/dev/null; then
+          echo "✅ GHCR image exists and is pullable: $GHCR_IMAGE"
+
+          # Verify digest resolves
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$GHCR_IMAGE" 2>/dev/null || echo "")
+          if [ -n "$DIGEST" ]; then
+            echo "✅ Image digest: $DIGEST"
+          else
+            echo "⚠️  Could not resolve digest"
+          fi
+        else
+          echo "ℹ️  GHCR image not found or not public (this is OK if GHCR publishing is not configured)"
+          echo "   Image: $GHCR_IMAGE"
+        fi
+
+  summary:
+    name: Deployment Validation Summary
+    runs-on: ubuntu-latest
+    needs: [validate-released-binary, validate-registry-artifacts]
+    if: always()
+    steps:
+    - name: Check results
+      run: |
+        if [ "${{ needs.validate-released-binary.result }}" = "success" ]; then
+          echo "✅ Released binary validation: PASSED"
+        else
+          echo "❌ Released binary validation: FAILED"
+          exit 1
+        fi
+
+        # Registry validation is optional
+        if [ "${{ needs.validate-registry-artifacts.result }}" = "success" ]; then
+          echo "✅ Registry artifacts validation: PASSED"
+        elif [ "${{ needs.validate-registry-artifacts.result }}" = "skipped" ]; then
+          echo "ℹ️  Registry artifacts validation: SKIPPED"
+        else
+          echo "⚠️  Registry artifacts validation: FAILED (non-blocking)"
+        fi
+
+        echo ""
+        echo "🎉 Deployment validation completed successfully!"
+        echo "The released artifacts are ready for users to install."
