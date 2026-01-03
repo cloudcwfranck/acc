@@ -19,8 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
-- **CI Changelog Check**: Enhanced changelog check to run on both pull requests and pushes to `main`/`claude/*` branches. Now detects code changes and requires CHANGELOG.md updates early in development, not just at PR time. Intelligently skips check when only docs/tests/CI configs change. This catches missing changelog entries sooner and provides clearer feedback.
+- **CI Changelog Check**: Enhanced changelog check to run on both pull requests and pushes to `main`/`claude/*` branches. Now detects code changes and requires CHANGELOG.md updates early in development, not just at PR time. Intelligently skips check when only docs/tests/CI configs change. For feature branches, compares entire branch against main (not just latest commit), allowing incremental commits like formatting fixes. This catches missing changelog entries sooner and provides clearer feedback.
 - **Attestation Enforcement Testing**: Added Test 10.3 to E2E suite specifically testing the "policy passes but no attestation" scenario. Test builds a new image (not a tag) to ensure unique digest without attestations. This critical security test ensures enforcement correctly blocks images that pass policy checks but lack attestations, preventing a bypass where policy-compliant images could run without attestation. Updated Test 10.4-10.6 numbering accordingly.
+- **Deployment Validation Workflow**: Added GitHub Actions workflow that validates released artifacts after a GitHub Release is published. Downloads actual release binaries (not repo-built), validates version strings, runs deployment smoke tests including `init`, `build`, `verify`, `attest`, and `trust verify`. Validates non-TTY execution in CI environments and optionally checks GHCR registry artifacts. This ensures the artifacts users install actually work before they download them. Runs on `release: published` trigger with manual `workflow_dispatch` option.
 
 ### Added - v0.3.3: Signed Attestation Envelopes with Deterministic Canonicalization
 
