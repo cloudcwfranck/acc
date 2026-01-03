@@ -1,10 +1,12 @@
 name: Deployment Validation
 
-# Validates released artifacts after a GitHub Release is published
+# Validates released artifacts after the Release workflow completes
 # Ensures the actual binaries users install work correctly
+# Uses workflow_run to avoid race conditions with asset uploads
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -17,6 +19,8 @@ jobs:
     name: Validate Released Binary
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    # Only run if Release workflow succeeded
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     strategy:
       fail-fast: false
       matrix:
@@ -36,7 +40,17 @@ jobs:
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           TAG="${{ github.event.inputs.tag }}"
         else
-          TAG="${{ github.event.release.tag_name }}"
+          # Extract tag from workflow_run event
+          # The Release workflow runs on push to tags, so head_branch contains the tag
+          TAG="${{ github.event.workflow_run.head_branch }}"
+
+          if [ -z "$TAG" ]; then
+            echo "❌ Could not determine release tag from workflow_run event"
+            echo "Event name: ${{ github.event_name }}"
+            echo "Head branch: ${{ github.event.workflow_run.head_branch }}"
+            echo "Head SHA: ${{ github.event.workflow_run.head_sha }}"
+            exit 1
+          fi
         fi
 
         # Strip 'v' prefix to get version number
@@ -50,35 +64,93 @@ jobs:
       run: |
         TAG="${{ steps.release_info.outputs.tag }}"
         VERSION="${{ steps.release_info.outputs.version }}"
-        ARCHIVE="acc_${VERSION}_${{ matrix.archive_name }}"
+        ARCHIVE_PATTERN="acc_${VERSION}_${{ matrix.archive_name }}"
         BINARY="${{ matrix.binary_name }}"
-
-        echo "Downloading $ARCHIVE from release $TAG..."
-
-        # Download the release archive
         REPO="${{ github.repository }}"
-        DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}"
 
-        mkdir -p ./bin
-        curl -L -f -o "./bin/${ARCHIVE}" "$DOWNLOAD_URL" || {
-          echo "❌ Failed to download release asset"
-          echo "URL: $DOWNLOAD_URL"
+        echo "Looking for asset matching: $ARCHIVE_PATTERN"
+        echo "Release tag: $TAG"
+        echo ""
+
+        # Query GitHub API for release assets with retries
+        MAX_RETRIES=10
+        RETRY_DELAY=5
+        ATTEMPT=0
+
+        while [ $ATTEMPT -lt $MAX_RETRIES ]; do
+          ATTEMPT=$((ATTEMPT + 1))
+          echo "Attempt $ATTEMPT/$MAX_RETRIES: Fetching release assets..."
+
+          # Get release info from GitHub API
+          RELEASE_JSON=$(curl -s "https://api.github.com/repos/${REPO}/releases/tags/${TAG}")
+
+          # Check if release exists
+          if echo "$RELEASE_JSON" | jq -e '.message == "Not Found"' > /dev/null 2>&1; then
+            echo "⚠️  Release $TAG not found yet"
+            if [ $ATTEMPT -lt $MAX_RETRIES ]; then
+              echo "   Waiting ${RETRY_DELAY}s before retry..."
+              sleep $RETRY_DELAY
+              continue
+            else
+              echo "❌ Release $TAG still not found after $MAX_RETRIES attempts"
+              exit 1
+            fi
+          fi
+
+          # List all available assets for debugging
+          echo "📦 Available assets:"
+          echo "$RELEASE_JSON" | jq -r '.assets[].name' || echo "  (none)"
           echo ""
-          echo "Available assets for this release:"
-          curl -s "https://api.github.com/repos/${REPO}/releases/tags/${TAG}" | \
-            jq -r '.assets[].name' || echo "Could not fetch release info"
-          exit 1
-        }
+
+          # Find the asset matching our pattern
+          DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ARCHIVE_PATTERN\") | .browser_download_url")
+
+          if [ -n "$DOWNLOAD_URL" ] && [ "$DOWNLOAD_URL" != "null" ]; then
+            echo "✅ Found asset: $ARCHIVE_PATTERN"
+            echo "   URL: $DOWNLOAD_URL"
+            echo ""
+
+            # Download the asset
+            mkdir -p ./bin
+            if curl -L -f -o "./bin/$ARCHIVE_PATTERN" "$DOWNLOAD_URL"; then
+              echo "✅ Downloaded successfully"
+              break
+            else
+              echo "⚠️  Download failed"
+              if [ $ATTEMPT -lt $MAX_RETRIES ]; then
+                echo "   Retrying in ${RETRY_DELAY}s..."
+                sleep $RETRY_DELAY
+                continue
+              else
+                echo "❌ Download failed after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            fi
+          else
+            echo "⚠️  Asset $ARCHIVE_PATTERN not found yet"
+            if [ $ATTEMPT -lt $MAX_RETRIES ]; then
+              echo "   Waiting ${RETRY_DELAY}s before retry..."
+              sleep $RETRY_DELAY
+              continue
+            else
+              echo "❌ Asset $ARCHIVE_PATTERN not found after $MAX_RETRIES attempts"
+              echo ""
+              echo "Available assets:"
+              echo "$RELEASE_JSON" | jq -r '.assets[].name'
+              exit 1
+            fi
+          fi
+        done
 
         # Extract the binary
         cd ./bin
-        tar -xzf "${ARCHIVE}" || {
+        tar -xzf "$ARCHIVE_PATTERN" || {
           echo "❌ Failed to extract archive"
           exit 1
         }
 
         # Rename binary to 'acc' for easier use
-        mv "${BINARY}" acc
+        mv "$BINARY" acc
         chmod +x acc
 
         # Verify it's executable

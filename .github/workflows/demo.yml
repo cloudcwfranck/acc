@@ -45,20 +45,33 @@ jobs:
         env:
           ACC_BIN: ${{ github.workspace }}/acc
 
+      - name: Verify demo.cast was created
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [ -f demo/demo.cast ]; then
+            echo "✅ demo.cast created successfully"
+            ls -lh demo/demo.cast
+          else
+            echo "❌ demo.cast was not created by demo/run.sh"
+            echo "Contents of demo directory:"
+            ls -la demo/ || echo "Demo directory doesn't exist"
+            exit 1
+          fi
+
       - name: Upload demo.cast as artifact
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: demo-recording
           path: demo/demo.cast
-          if-no-files-found: warn
+          if-no-files-found: error
 
   # Upload demo recording to GitHub Release
   upload-to-release:
     runs-on: ubuntu-latest
     needs: validate-demo
-    # Only run on version tags (not PRs or regular pushes to main)
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Only run on version tags AND if validate-demo succeeded
+    if: startsWith(github.ref, 'refs/tags/v') && needs.validate-demo.result == 'success'
     permissions:
       contents: write
 
@@ -67,13 +80,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download demo artifact
+        id: download
         uses: actions/download-artifact@v4
         with:
           name: demo-recording
           path: ./demo-files
+        continue-on-error: true
 
       - name: Verify demo.cast exists
+        id: verify
         run: |
+          if [ "${{ steps.download.outcome }}" != "success" ]; then
+            echo "❌ Failed to download artifact 'demo-recording'"
+            echo "The artifact may not have been uploaded in the validate-demo job"
+            exit 1
+          fi
+
           if [ ! -f demo-files/demo.cast ]; then
             echo "❌ demo.cast not found in artifact"
             echo "Contents of demo-files:"
@@ -84,6 +106,7 @@ jobs:
           ls -lh demo-files/demo.cast
 
       - name: Upload to release
+        if: steps.verify.outcome == 'success'
         uses: softprops/action-gh-release@v1
         with:
           files: demo-files/demo.cast
@@ -93,6 +116,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify upload success
+        if: steps.verify.outcome == 'success'
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           echo "✅ Successfully uploaded demo.cast to release $TAG"
