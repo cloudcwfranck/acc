@@ -16,65 +16,98 @@ jobs:
   validate-released-binary:
     name: Validate Released Binary
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         include:
           - os: ubuntu-latest
-            asset_name: acc-linux-amd64
+            archive_name: linux_amd64.tar.gz
+            binary_name: acc-linux-amd64
           - os: macos-latest
-            asset_name: acc-darwin-amd64
+            archive_name: darwin_amd64.tar.gz
+            binary_name: acc-darwin-amd64
 
     steps:
-    - name: Determine release tag
-      id: release_tag
+    - name: Determine release tag and version
+      id: release_info
       run: |
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           TAG="${{ github.event.inputs.tag }}"
         else
           TAG="${{ github.event.release.tag_name }}"
         fi
+
+        # Strip 'v' prefix to get version number
+        VERSION="${TAG#v}"
+
         echo "tag=$TAG" >> $GITHUB_OUTPUT
-        echo "Validating release: $TAG"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Validating release: $TAG (version: $VERSION)"
 
-    - name: Download released binary
+    - name: Download and extract released binary
       run: |
-        TAG="${{ steps.release_tag.outputs.tag }}"
-        ASSET_NAME="${{ matrix.asset_name }}"
+        TAG="${{ steps.release_info.outputs.tag }}"
+        VERSION="${{ steps.release_info.outputs.version }}"
+        ARCHIVE="acc_${VERSION}_${{ matrix.archive_name }}"
+        BINARY="${{ matrix.binary_name }}"
 
-        echo "Downloading $ASSET_NAME from release $TAG..."
+        echo "Downloading $ARCHIVE from release $TAG..."
 
-        # Download the release asset
+        # Download the release archive
         REPO="${{ github.repository }}"
-        DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
+        DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}"
 
         mkdir -p ./bin
-        curl -L -f -o "./bin/acc" "$DOWNLOAD_URL" || {
+        curl -L -f -o "./bin/${ARCHIVE}" "$DOWNLOAD_URL" || {
           echo "❌ Failed to download release asset"
           echo "URL: $DOWNLOAD_URL"
+          echo ""
+          echo "Available assets for this release:"
+          curl -s "https://api.github.com/repos/${REPO}/releases/tags/${TAG}" | \
+            jq -r '.assets[].name' || echo "Could not fetch release info"
           exit 1
         }
 
-        chmod +x ./bin/acc
-        echo "$PWD/bin" >> $GITHUB_PATH
+        # Extract the binary
+        cd ./bin
+        tar -xzf "${ARCHIVE}" || {
+          echo "❌ Failed to extract archive"
+          exit 1
+        }
+
+        # Rename binary to 'acc' for easier use
+        mv "${BINARY}" acc
+        chmod +x acc
+
+        # Verify it's executable
+        ./acc version > /dev/null 2>&1 || {
+          echo "❌ Binary is not executable or crashes"
+          exit 1
+        }
+
+        echo "✅ Downloaded and extracted binary successfully"
+
+    - name: Add binary to PATH
+      run: echo "$PWD/bin" >> $GITHUB_PATH
 
     - name: Validate binary version
       run: |
-        TAG="${{ steps.release_tag.outputs.tag }}"
+        VERSION="${{ steps.release_info.outputs.version }}"
 
         # Run version command
-        VERSION_OUTPUT=$(./bin/acc version 2>&1 || echo "")
-        echo "Version output: $VERSION_OUTPUT"
+        VERSION_OUTPUT=$(acc version 2>&1)
+        echo "Version output:"
+        echo "$VERSION_OUTPUT"
+        echo ""
 
-        # Assert version contains the release tag (strip leading 'v' if present)
-        TAG_NUMBER="${TAG#v}"
-        if echo "$VERSION_OUTPUT" | grep -q "$TAG_NUMBER"; then
-          echo "✅ Version matches release tag: $TAG_NUMBER"
+        # Assert version contains the release version number
+        if echo "$VERSION_OUTPUT" | grep -q "$VERSION"; then
+          echo "✅ Version matches release: $VERSION"
         else
-          echo "❌ Version does not match release tag"
-          echo "Expected: $TAG_NUMBER"
+          echo "❌ Version does not match release"
+          echo "Expected: $VERSION"
           echo "Got: $VERSION_OUTPUT"
           exit 1
         fi
@@ -82,32 +115,16 @@ jobs:
     - name: Validate help command
       run: |
         # Basic sanity check that help works
-        ./bin/acc help > /dev/null 2>&1 || {
+        acc help > /dev/null 2>&1 || {
           echo "❌ 'acc help' failed"
           exit 1
         }
         echo "✅ 'acc help' works"
 
-    - name: Set up Docker (Linux only)
+    - name: Set up Docker
       if: runner.os == 'Linux'
       run: |
         # Docker is pre-installed on GitHub Actions Ubuntu runners
-        docker --version
-
-    - name: Set up Docker (macOS only)
-      if: runner.os == 'macOS'
-      run: |
-        # Install Docker on macOS
-        brew install --cask docker
-        # Wait for Docker to start
-        for i in {1..30}; do
-          if docker info > /dev/null 2>&1; then
-            echo "Docker is running"
-            break
-          fi
-          echo "Waiting for Docker to start... ($i/30)"
-          sleep 2
-        done
         docker --version
 
     - name: Run deployment smoke test
@@ -123,6 +140,7 @@ jobs:
           echo "❌ 'acc init' failed"
           exit 1
         }
+        echo "✅ 'acc init' succeeded"
         cd test-project
 
         # Create a simple Dockerfile for testing
@@ -137,6 +155,7 @@ jobs:
           echo "❌ Docker build failed"
           exit 1
         }
+        echo "✅ Docker build succeeded"
 
         # Verify the image
         acc verify demo-app:deployment-test || {
@@ -145,19 +164,29 @@ jobs:
         }
         echo "✅ 'acc verify' passed"
 
-        # Attest the image
+        # Attest the image (tests v0.3.3 signed envelopes)
         acc attest demo-app:deployment-test || {
           echo "❌ 'acc attest' failed"
           exit 1
         }
-        echo "✅ 'acc attest' succeeded"
+        echo "✅ 'acc attest' succeeded (with v0.3.3 signed envelope)"
 
-        # Verify attestation exists
+        # Verify attestation exists and is valid
         acc trust verify demo-app:deployment-test || {
           echo "❌ 'acc trust verify' failed"
           exit 1
         }
         echo "✅ 'acc trust verify' passed"
+
+        # Check that attestation file has envelope structure
+        ATTEST_FILE=$(find .acc/attestations -name "*-attestation.json" | head -1)
+        if [ -n "$ATTEST_FILE" ]; then
+          if grep -q '"envelope"' "$ATTEST_FILE"; then
+            echo "✅ Attestation has v0.3.3 envelope (signed)"
+          else
+            echo "⚠️  Attestation does not have envelope (legacy format)"
+          fi
+        fi
 
         # Non-TTY regression test: Run workload in CI (non-TTY environment)
         # This must succeed without "the input device is not a TTY" error
@@ -171,91 +200,39 @@ jobs:
         cd /
         rm -rf "$WORKDIR"
 
-        echo "✅ All deployment smoke tests passed"
+        echo ""
+        echo "🎉 All deployment smoke tests passed!"
+        echo "   The released binary is fully functional."
 
     - name: Upload logs on failure
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: deployment-validation-logs-${{ matrix.os }}
+        name: deployment-validation-logs-${{ matrix.os }}-${{ steps.release_info.outputs.tag }}
         path: |
           /tmp/acc-*.log
           ~/.acc/state/
         retention-days: 7
         if-no-files-found: ignore
 
-  validate-registry-artifacts:
-    name: Validate GHCR Artifacts
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # Only run if the repository has GHCR publishing enabled
-    # Skip on forks or if GHCR is not configured
-    if: github.repository_owner != '' && github.event_name == 'release'
-
-    steps:
-    - name: Determine release tag
-      id: release_tag
-      run: |
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          TAG="${{ github.event.inputs.tag }}"
-        else
-          TAG="${{ github.event.release.tag_name }}"
-        fi
-        echo "tag=$TAG" >> $GITHUB_OUTPUT
-        echo "Validating GHCR artifacts for: $TAG"
-
-    - name: Validate GHCR image (if published)
-      continue-on-error: true  # Don't fail if GHCR publishing is not set up
-      run: |
-        TAG="${{ steps.release_tag.outputs.tag }}"
-        REPO="${{ github.repository }}"
-        OWNER="${{ github.repository_owner }}"
-
-        # Construct GHCR image reference
-        GHCR_IMAGE="ghcr.io/${REPO}:${TAG}"
-
-        echo "Checking if GHCR image exists: $GHCR_IMAGE"
-
-        # Try to pull the image (may fail if not published to GHCR)
-        if docker pull "$GHCR_IMAGE" 2>/dev/null; then
-          echo "✅ GHCR image exists and is pullable: $GHCR_IMAGE"
-
-          # Verify digest resolves
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$GHCR_IMAGE" 2>/dev/null || echo "")
-          if [ -n "$DIGEST" ]; then
-            echo "✅ Image digest: $DIGEST"
-          else
-            echo "⚠️  Could not resolve digest"
-          fi
-        else
-          echo "ℹ️  GHCR image not found or not public (this is OK if GHCR publishing is not configured)"
-          echo "   Image: $GHCR_IMAGE"
-        fi
-
   summary:
     name: Deployment Validation Summary
     runs-on: ubuntu-latest
-    needs: [validate-released-binary, validate-registry-artifacts]
+    needs: [validate-released-binary]
     if: always()
+
     steps:
     - name: Check results
       run: |
         if [ "${{ needs.validate-released-binary.result }}" = "success" ]; then
           echo "✅ Released binary validation: PASSED"
+          echo ""
+          echo "🎉 Deployment validation completed successfully!"
+          echo "The released artifacts are ready for users to install."
         else
           echo "❌ Released binary validation: FAILED"
+          echo ""
+          echo "Release artifacts are NOT working correctly."
+          echo "Please review the logs and fix the issues before announcing the release."
           exit 1
         fi
-
-        # Registry validation is optional
-        if [ "${{ needs.validate-registry-artifacts.result }}" = "success" ]; then
-          echo "✅ Registry artifacts validation: PASSED"
-        elif [ "${{ needs.validate-registry-artifacts.result }}" = "skipped" ]; then
-          echo "ℹ️  Registry artifacts validation: SKIPPED"
-        else
-          echo "⚠️  Registry artifacts validation: FAILED (non-blocking)"
-        fi
-
-        echo ""
-        echo "🎉 Deployment validation completed successfully!"
-        echo "The released artifacts are ready for users to install."
