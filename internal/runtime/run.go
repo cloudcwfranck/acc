@@ -10,6 +10,7 @@ import (
 	"github.com/cloudcwfranck/acc/internal/trust"
 	"github.com/cloudcwfranck/acc/internal/ui"
 	"github.com/cloudcwfranck/acc/internal/verify"
+	"golang.org/x/term"
 )
 
 // RunOptions represents options for running a workload
@@ -121,6 +122,16 @@ func detectRuntime() (string, error) {
 	return "", fmt.Errorf("no container runtime found (tried: docker, podman, nerdctl)\n\nRemediation:\n  - Install Docker: https://docs.docker.com/get-docker/\n  - Or install Podman: https://podman.io/getting-started/installation\n  - Or install nerdctl: https://github.com/containerd/nerdctl")
 }
 
+// isStdinTTY checks if stdin is a terminal
+func isStdinTTY() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}
+
+// isStdoutTTY checks if stdout is a terminal
+func isStdoutTTY() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
 // buildRunCommand builds the run command with security defaults (AGENTS.md Section 8)
 func buildRunCommand(runtime string, opts *RunOptions) []string {
 	args := []string{runtime, "run"}
@@ -128,8 +139,17 @@ func buildRunCommand(runtime string, opts *RunOptions) []string {
 	// Remove container after run
 	args = append(args, "--rm")
 
-	// Interactive + TTY for user interaction
-	args = append(args, "-it")
+	// Add -i (interactive) only if stdin is a TTY
+	// This allows piped input in CI while preserving interactive mode in terminals
+	if isStdinTTY() {
+		args = append(args, "-i")
+	}
+
+	// Add -t (TTY) only if stdout is a TTY
+	// This prevents "the input device is not a TTY" errors in CI environments
+	if isStdoutTTY() {
+		args = append(args, "-t")
+	}
 
 	// Apply security defaults (AGENTS.md Section 8)
 
