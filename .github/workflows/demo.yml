@@ -107,7 +107,7 @@ jobs:
 
       - name: Upload to release
         if: steps.verify.outcome == 'success'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: demo-files/demo.cast
           fail_on_unmatched_files: true
