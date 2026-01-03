@@ -87,10 +87,13 @@ jobs:
           exit 1
         }
 
+        # Go back to workspace root
+        cd ..
+
         echo "✅ Downloaded and extracted binary successfully"
 
     - name: Add binary to PATH
-      run: echo "$PWD/bin" >> $GITHUB_PATH
+      run: echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
 
     - name: Validate binary version
       run: |
