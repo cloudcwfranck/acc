@@ -854,14 +854,23 @@ set -e
 log "Run with enforcement (HAS attestation) output:"
 echo "$run_enforce_ok_output" | head -20 | tee -a "$LOGFILE"
 
-# Should succeed (exit 0) or not be implemented
+# MUST succeed (exit 0) when trust enforcement passes
+# Exit 0 means trust gates passed, regardless of runtime execution success
 if [ $run_enforce_ok_exit -eq 0 ]; then
-    log_success "acc run (enforcement + HAS attestation): exit 0 (allowed to run)"
+    log_success "acc run (enforcement + HAS attestation): exit 0 (trust enforcement succeeded)"
+
+    # Verify trust enforcement succeeded (should see verification messages)
+    if echo "$run_enforce_ok_output" | grep -qi "verification passed"; then
+        log_success "Trust enforcement messages present in output"
+    fi
 elif [ $run_enforce_ok_exit -eq 1 ]; then
-    log "⚠️  acc run (enforcement + HAS attestation): exit 1 (unexpected - should allow run)"
+    log_error "acc run (enforcement + HAS attestation): exit 1 (trust enforcement should succeed!)"
     log "Output: $run_enforce_ok_output"
+    exit 1
 else
-    log "⚠️  acc run (enforcement + HAS attestation): exit $run_enforce_ok_exit"
+    log_error "acc run (enforcement + HAS attestation): exit $run_enforce_ok_exit (expected exit 0)"
+    log "Output: $run_enforce_ok_output"
+    exit 1
 fi
 
 # Test 10.3: Run with enforcement enabled + policy PASS but NO attestation (should block)
