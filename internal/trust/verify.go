@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cloudcwfranck/acc/internal/ui"
 )
@@ -156,15 +157,26 @@ func validateAttestation(path, expectedDigest string) AttestationDetail {
 		}
 	}
 
-	// Validate digest match
+	// Validate digest match with normalization
 	if subject, ok := attest["subject"].(map[string]interface{}); ok {
 		if attestDigest, ok := subject["imageDigest"].(string); ok {
-			// Both digests should match (without sha256: prefix if present)
-			detail.DigestMatch = (attestDigest == expectedDigest)
+			// Normalize both digests for comparison (handles sha256: prefix variations)
+			detail.DigestMatch = (normalizeDigest(attestDigest) == normalizeDigest(expectedDigest))
 		}
 	}
 
 	return detail
+}
+
+// normalizeDigest normalizes a digest string for comparison
+// - Trims whitespace
+// - Lowercases
+// - Strips optional "sha256:" prefix
+func normalizeDigest(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ToLower(s)
+	s = strings.TrimPrefix(s, "sha256:")
+	return s
 }
 
 // printHumanVerifyResult prints human-readable verification result

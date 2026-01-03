@@ -873,36 +873,96 @@ else
     exit 1
 fi
 
-# Test 10.3: Run with enforcement enabled + image NO attestation (should block)
-log "Test 10.3: Run with enforcement enabled + image NO attestation (should block)"
+# Test 10.3: Run with enforcement enabled + policy PASS but NO attestation (should block)
+log "Test 10.3: Policy PASS + NO attestation with enforcement (should block)"
 
-# Use demo-app:root which was verified in TEST 4 but NOT attested
+# Build a NEW non-root image (policy will pass) with a different digest than demo-app:ok
+# CRITICAL: Must be a new build, not a tag, so it has a different digest (and no attestation)
+log "Building demo-app:ok-noattest (non-root, policy should pass)"
+cat > Dockerfile.noattest <<'EOF'
+FROM alpine:3.19
+USER 1000:1000
+# Add a unique marker to ensure different digest from demo-app:ok
+RUN echo "no-attestation-test" > /tmp/marker
+CMD ["sh", "-c", "echo 'Hello from non-root user (no attestation)'"]
+EOF
+docker build -t demo-app:ok-noattest -f Dockerfile.noattest . > /dev/null 2>&1
+
+# Verify it (should pass policy)
+log "Verifying demo-app:ok-noattest (policy should pass)"
+verify_noattest_output=$($ACC_BIN verify --json demo-app:ok-noattest 2>&1) || true
+verify_noattest_exit=$?
+
+if [ $verify_noattest_exit -eq 0 ]; then
+    log_success "acc verify demo-app:ok-noattest: exit 0 (policy passed)"
+
+    # Confirm it's a pass status
+    if echo "$verify_noattest_output" | jq -e '.status == "pass"' > /dev/null 2>&1; then
+        log_success "Policy check passed for demo-app:ok-noattest"
+    else
+        log_error "Policy check did not pass (unexpected)"
+    fi
+else
+    log_error "acc verify demo-app:ok-noattest: exit $verify_noattest_exit (expected 0)"
+fi
+
+# Do NOT attest this image (this is the key difference from other tests)
+log "Skipping attestation for demo-app:ok-noattest (intentional)"
+
+# Now run with enforcement - should block due to missing attestation
+set +e
+run_enforce_noattest_output=$($ACC_BIN --config "$WORKDIR/acc-enforce.yaml" run demo-app:ok-noattest -- echo "test" 2>&1)
+run_enforce_noattest_exit=$?
+set -e
+
+log "Run with enforcement (policy PASS but NO attestation) output:"
+echo "$run_enforce_noattest_output" | head -20 | tee -a "$LOGFILE"
+
+# Should block (exit 1) due to missing attestation
+if [ $run_enforce_noattest_exit -eq 1 ]; then
+    log_success "acc run (policy PASS + NO attestation): exit 1 (blocked as expected)"
+
+    # Check for explicit attestation requirement message
+    if echo "$run_enforce_noattest_output" | grep -qi "attestation" && (echo "$run_enforce_noattest_output" | grep -qi "require" || echo "$run_enforce_noattest_output" | grep -qi "missing"); then
+        log_success "Error message explicitly mentions attestation is required/missing"
+    else
+        log_error "Error message should explicitly mention attestation requirement"
+        echo "Output: $run_enforce_noattest_output" | tee -a "$LOGFILE"
+        exit 1
+    fi
+elif [ $run_enforce_noattest_exit -eq 0 ]; then
+    log_error "acc run (policy PASS + NO attestation): exit 0 (should have blocked!)"
+    echo "This is a critical security gap - enforcement should block images without attestation" | tee -a "$LOGFILE"
+    exit 1
+else
+    log_error "acc run (policy PASS + NO attestation): exit $run_enforce_noattest_exit (expected 1)"
+    exit 1
+fi
+
+# Test 10.4: Run with enforcement enabled + policy FAIL + NO attestation (should also block)
+log "Test 10.4: Policy FAIL + NO attestation with enforcement (should block)"
+
+# Use demo-app:root which has policy violations and was NOT attested
 set +e
 run_enforce_fail_output=$($ACC_BIN --config "$WORKDIR/acc-enforce.yaml" run demo-app:root -- echo "test" 2>&1)
 run_enforce_fail_exit=$?
 set -e
 
-log "Run with enforcement (NO attestation) output:"
+log "Run with enforcement (policy FAIL + NO attestation) output:"
 echo "$run_enforce_fail_output" | head -20 | tee -a "$LOGFILE"
 
-# Should block (exit 1)
+# Should block (exit 1) - could be due to policy OR attestation
 if [ $run_enforce_fail_exit -eq 1 ]; then
-    log_success "acc run (enforcement + NO attestation): exit 1 (blocked as expected)"
-
-    # Check for remediation message
-    if echo "$run_enforce_fail_output" | grep -qi "attestation"; then
-        log_success "Error message mentions attestation requirement"
-    else
-        log "⚠️  Error message should mention attestation requirement"
-    fi
+    log_success "acc run (policy FAIL + NO attestation): exit 1 (blocked as expected)"
+    # Note: we don't check the specific error message here since it could be either policy or attestation
 elif [ $run_enforce_fail_exit -eq 0 ]; then
-    log_error "acc run (enforcement + NO attestation): exit 0 (should have blocked!)"
+    log_error "acc run (policy FAIL + NO attestation): exit 0 (should have blocked!)"
 else
-    log "⚠️  acc run (enforcement + NO attestation): exit $run_enforce_fail_exit"
+    log "⚠️  acc run (policy FAIL + NO attestation): exit $run_enforce_fail_exit"
 fi
 
-# Test 10.4: Run with enforcement + never verified image (should block)
-log "Test 10.4: Run with enforcement + never verified image (should block)"
+# Test 10.5: Run with enforcement + never verified image (should block)
+log "Test 10.5: Run with enforcement + never verified image (should block)"
 
 set +e
 run_enforce_unknown_output=$($ACC_BIN --config "$WORKDIR/acc-enforce.yaml" run demo-app:never-verified -- echo "test" 2>&1)
@@ -918,8 +978,8 @@ else
     log "⚠️  acc run (enforcement + unknown): exit $run_enforce_unknown_exit"
 fi
 
-# Test 10.5: Regression test for TTY handling in non-interactive environments
-log "Test 10.5: Non-TTY environment (regression test for CI compatibility)"
+# Test 10.6: Regression test for TTY handling in non-interactive environments
+log "Test 10.6: Non-TTY environment (regression test for CI compatibility)"
 
 # Run in non-TTY environment by explicitly closing stdin
 # This simulates CI/non-interactive execution

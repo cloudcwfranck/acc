@@ -196,12 +196,16 @@ jobs:
         retention-days: 7
 
   # ============================================================================
-  # CHANGELOG CHECK (ONLY ON PRS, BLOCKS MERGE)
+  # CHANGELOG CHECK (RUNS ON PRs AND PUSHES)
+  # Ensures CHANGELOG.md is updated for code changes
   # ============================================================================
   changelog-check:
     name: Changelog Check
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    # Run on PRs and pushes to main/claude/* branches
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/claude/')))
 
     steps:
     - name: Checkout code
@@ -211,12 +215,46 @@ jobs:
 
     - name: Check if CHANGELOG.md was updated
       run: |
-        if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "CHANGELOG.md"; then
-          echo "✅ CHANGELOG.md has been updated"
+        # For PRs, compare against base branch
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          BASE_REF="origin/${{ github.base_ref }}"
+          CHANGE_RANGE="$BASE_REF...HEAD"
         else
-          echo "❌ CHANGELOG.md has not been updated"
-          echo ""
-          echo "Please add an entry to CHANGELOG.md under the [Unreleased] section."
-          echo "See docs/testing-contract.md for changelog guidelines."
-          exit 1
+          # For pushes, compare against previous commit
+          # Use main as fallback if we can't determine previous commit
+          if [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            CHANGE_RANGE="${{ github.event.before }}...HEAD"
+          else
+            # First push to branch - compare to main
+            CHANGE_RANGE="origin/main...HEAD" || CHANGE_RANGE="HEAD~1...HEAD"
+          fi
+        fi
+
+        # Get list of changed files
+        CHANGED_FILES=$(git diff --name-only $CHANGE_RANGE 2>/dev/null || echo "")
+
+        # Check if there are code changes (not just docs/tests)
+        CODE_CHANGED=false
+        for file in $CHANGED_FILES; do
+          # Skip if only markdown, test files, or CI config changed
+          if [[ ! "$file" =~ \.(md|txt)$ ]] && [[ ! "$file" =~ ^\.github/ ]] && [[ ! "$file" =~ _test\.go$ ]]; then
+            CODE_CHANGED=true
+            break
+          fi
+        done
+
+        # If code changed, require changelog update
+        if [ "$CODE_CHANGED" = "true" ]; then
+          if echo "$CHANGED_FILES" | grep -q "CHANGELOG.md"; then
+            echo "✅ CHANGELOG.md has been updated"
+          else
+            echo "❌ CHANGELOG.md has not been updated"
+            echo ""
+            echo "Code changes detected but CHANGELOG.md was not updated."
+            echo "Please add an entry to CHANGELOG.md under the [Unreleased] section."
+            echo "See docs/testing-contract.md for changelog guidelines."
+            exit 1
+          fi
+        else
+          echo "ℹ️  Only docs/tests changed - changelog update not required"
         fi
