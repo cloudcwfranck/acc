@@ -2,6 +2,7 @@ package attest
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cloudcwfranck/acc/internal/config"
+	"github.com/cloudcwfranck/acc/internal/crypto"
 	"github.com/cloudcwfranck/acc/internal/ui"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -54,6 +56,23 @@ type AttestationMeta struct {
 	Tool        string `json:"tool"`
 	ToolVersion string `json:"toolVersion"`
 	GitCommit   string `json:"gitCommit,omitempty"`
+}
+
+// Envelope represents the v0.3.3 signed envelope wrapping an attestation
+type Envelope struct {
+	Version     string `json:"version"`
+	Alg         string `json:"alg"`
+	KeyID       string `json:"keyId"`
+	PublicKey   string `json:"publicKey"`   // base64-encoded raw ed25519 public key
+	Canon       string `json:"canon"`       // "jcs"
+	PayloadHash string `json:"payloadHash"` // "sha256:<hex>"
+	Signature   string `json:"signature"`   // base64-encoded ed25519 signature
+}
+
+// AttestationWithEnvelope represents the v0.3.3 format with signed envelope
+type AttestationWithEnvelope struct {
+	Attestation Attestation `json:"attestation"`
+	Envelope    *Envelope   `json:"envelope,omitempty"`
 }
 
 // AttestResult represents the result of attestation creation
@@ -361,12 +380,55 @@ func sanitizeRef(ref string) string {
 	return reg.ReplaceAllString(name, "_")
 }
 
-// writeAttestation writes the attestation to a file
+// writeAttestation writes the attestation to a file with v0.3.3 signed envelope
 func writeAttestation(path string, attestation *Attestation) error {
-	// Marshal with deterministic ordering
-	data, err := json.MarshalIndent(attestation, "", "  ")
+	// Determine project root (walk up from current directory)
+	projectRoot, err := findProjectRoot()
 	if err != nil {
-		return fmt.Errorf("failed to marshal attestation: %w", err)
+		// Fallback to current directory if no .acc found
+		projectRoot = "."
+	}
+
+	// Resolve or generate signing key
+	keyInfo, err := crypto.EnsureKeyForAttest(projectRoot)
+	if err != nil {
+		return fmt.Errorf("failed to resolve signing key: %w", err)
+	}
+
+	// Canonicalize the attestation object using JCS
+	canonicalPayload, err := crypto.CanonicalizeJCS(attestation)
+	if err != nil {
+		return fmt.Errorf("failed to canonicalize attestation: %w", err)
+	}
+
+	// Compute payload hash
+	payloadHashBytes := sha256.Sum256(canonicalPayload)
+	payloadHash := fmt.Sprintf("sha256:%x", payloadHashBytes)
+
+	// Sign the canonical payload
+	signature := ed25519.Sign(keyInfo.PrivateKey, canonicalPayload)
+
+	// Create envelope
+	envelope := &Envelope{
+		Version:     "v0.3.3",
+		Alg:         "ed25519",
+		KeyID:       keyInfo.KeyID,
+		PublicKey:   base64.StdEncoding.EncodeToString(keyInfo.PublicKey),
+		Canon:       "jcs",
+		PayloadHash: payloadHash,
+		Signature:   base64.StdEncoding.EncodeToString(signature),
+	}
+
+	// Create attestation with envelope
+	attestationWithEnvelope := AttestationWithEnvelope{
+		Attestation: *attestation,
+		Envelope:    envelope,
+	}
+
+	// Marshal with indentation for readability
+	data, err := json.MarshalIndent(attestationWithEnvelope, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal attestation with envelope: %w", err)
 	}
 
 	if err := os.WriteFile(path, data, 0644); err != nil {
@@ -374,6 +436,28 @@ func writeAttestation(path string, attestation *Attestation) error {
 	}
 
 	return nil
+}
+
+// findProjectRoot walks up the directory tree to find .acc directory
+func findProjectRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		accDir := filepath.Join(dir, ".acc")
+		if _, err := os.Stat(accDir); err == nil {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached root without finding .acc
+			return "", fmt.Errorf(".acc directory not found")
+		}
+		dir = parent
+	}
 }
 
 // updateLastAttestationPointer updates the last_attestation.json pointer

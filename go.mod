@@ -4,6 +4,7 @@ go 1.24.7
 
 require (
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/gowebpki/jcs v1.0.1
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/spf13/cobra v1.10.2
