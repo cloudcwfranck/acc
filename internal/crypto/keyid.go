@@ -10,7 +10,8 @@ import (
 // KeyIDFromPublicKeyEd25519 derives a deterministic keyId from an ed25519 public key.
 //
 // Algorithm:
-//   keyId = "ed25519:" + lower(base32(no padding)(sha256(publicKeyBytes)))[:26]
+//
+//	keyId = "ed25519:" + lower(base32(no padding)(sha256(publicKeyBytes)))[:26]
 //
 // This ensures:
 // - Deterministic: same public key always produces same keyId
