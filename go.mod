@@ -11,7 +11,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	golang.org/x/term v0.38.0
 	gopkg.in/yaml.v3 v3.0.1
-	oras.land/oras-go/v2 v2.6.0
+	oras.land/oras-go/v2 v2.6.1
 )
 
 require (
