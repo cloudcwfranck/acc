@@ -11,7 +11,7 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "next": "^14.0.4",
+    "next": "15.5.16",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
